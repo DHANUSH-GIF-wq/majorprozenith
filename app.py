@@ -305,8 +305,6 @@ def video_generator_interface():
             video_width2 = st.number_input("Video Width", 640, 1920, Config.DEFAULT_VIDEO_WIDTH, 160, key="vw3")
             video_height2 = st.number_input("Video Height", 480, 1080, Config.DEFAULT_VIDEO_HEIGHT, 120, key="vh3")
             fps2 = st.number_input("Frames per Second", 1, 30, Config.DEFAULT_FPS, key="fps3")
-            seconds_per_slide = st.slider("Seconds per slide", 4.0, 20.0, 7.0)
-        total_minutes = st.slider("Total duration (minutes)", min_value=1, max_value=15, value=3)
         st.markdown("#### 🎙️ Voice")
         colv1, colv2 = st.columns(2)
         with colv1:
@@ -380,13 +378,7 @@ def video_generator_interface():
                         style = None
                         if st.session_state.reference_video_path:
                             style = st.session_state.video_generator.extract_style_from_reference(st.session_state.reference_video_path)
-                        # compute seconds per slide from total duration if possible
-                        try:
-                            slide_count = max(1, len(data.get("slides", [])))
-                            target_seconds = int(total_minutes) * 60
-                            computed_sps = max(4.0, min(30.0, target_seconds / float(slide_count)))
-                        except Exception:
-                            computed_sps = float(seconds_per_slide)
+                        # Target total duration is automatically decided within 4–10 minutes
                         # do NOT repeat narration; rely on per-slide timing and audio padding for target duration
                         # 4) Render directly
                         temp_video = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4"); temp_video.close()
@@ -407,7 +399,8 @@ def video_generator_interface():
                                 width=video_width2,
                                 height=video_height2,
                                 fps=fps2,
-                                seconds_per_slide=float(computed_sps),
+                                seconds_per_slide=8.0,
+                                desired_total_seconds=None,
                                 style=style,
                                 voice_gender=voice_gender,
                                 voice_name=voice_name,
@@ -426,6 +419,8 @@ def video_generator_interface():
                                 )
                         except Exception as e:
                             st.error(f"❌ Failed to generate video: {e}")
+                    except Exception as e:
+                        st.error(f"❌ Unexpected error during generation: {e}")
 
         # Display previously generated video if available
         if st.session_state.explainer_video_path:

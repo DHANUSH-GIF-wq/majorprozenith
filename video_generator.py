@@ -323,6 +323,7 @@ class VideoGenerator:
 		height: Optional[int] = None,
 		fps: Optional[int] = None,
 		seconds_per_slide: float = 8.0,
+		desired_total_seconds: Optional[float] = None,
 		style: Optional[dict] = None,
 		voice_gender: Optional[str] = None,
 		voice_name: Optional[str] = None,
@@ -385,11 +386,12 @@ class VideoGenerator:
 		temp_silent_videos = []
 		temp_audios = []
 		temp_av_videos = []
+		# First synthesize audio for each slide without saying slide numbers
+		audio_durations = []
 		for idx, s in enumerate(slides):
 			# narration text preferred; fallback to bullets join
 			narr = s.get("narration") or ". ".join(s.get("bullets", []))
-			narr_prefix = f"Slide {idx+1}. "
-			narr_full = (narr_prefix + narr).strip()
+			narr_full = narr.strip()
 			audio_path = self.text_to_speech(narr_full, voice_gender=voice_gender, voice_name=voice_name)
 			temp_audios.append(audio_path)
 			dur = None
@@ -399,7 +401,19 @@ class VideoGenerator:
 					dur = float(max(0.1, meta.info.length))
 				except Exception:
 					pass
-			duration = max(seconds_per_slide, dur or seconds_per_slide)
+			audio_durations.append(float(dur or seconds_per_slide))
+		# Choose durations to target 4-10 minutes total
+		num_slides = max(1, len(slides))
+		if desired_total_seconds is None:
+			base_total = sum(max(6.0, d + 1.0) for d in audio_durations)
+			desired_total = max(240.0, min(600.0, base_total))
+		else:
+			desired_total = max(240.0, min(600.0, float(desired_total_seconds)))
+		median_audio = sorted(audio_durations)[len(audio_durations)//2] if audio_durations else seconds_per_slide
+		uniform_seconds_per_slide = max(median_audio + 0.5, desired_total / float(num_slides))
+		# Now render each slide using the decided duration
+		for idx, s in enumerate(slides):
+			duration = max(uniform_seconds_per_slide, audio_durations[idx])
 			# build video
 			temp_video = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
 			temp_video_path = temp_video.name
@@ -417,6 +431,7 @@ class VideoGenerator:
 				else:
 					frame = np.zeros((height, width, 3), dtype=np.uint8)
 					frame[:] = (20, 30, 45)
+				# On-screen bullets only; avoid explicit slide numbering in overlays
 				frame = self._draw_slide_text(frame, s.get("title", ""), s.get("bullets", []))
 				if t < 1.0:
 					alpha = max(0.0, min(1.0, t / 1.0))
@@ -499,13 +514,13 @@ class VideoGenerator:
 			if eleven_available and self.config.ELEVENLABS_API_KEY:
 				try:
 					el_set_key(self.config.ELEVENLABS_API_KEY)
-					# choose a voice
+					# choose a more human-sounding default voice
 					voice_id = None
 					if voice_name:
 						voice_id = voice_name
 					elif voice_gender:
 						# naive mapping by gender keywords; users can provide exact voice name for precision
-						preferred = 'Rachel' if voice_gender.lower().startswith('f') else 'Adam'
+						preferred = 'Adam' if voice_gender.lower().startswith('m') else 'Rachel'
 						voice_id = preferred
 					else:
 						voice_id = 'Adam'
@@ -515,8 +530,8 @@ class VideoGenerator:
 					return output_path
 				except Exception as _e:
 					logger.warning(f"ElevenLabs TTS failed, falling back to gTTS: {_e}")
-			# gTTS fallback
-			tts = gTTS(text=text, lang=self.config.TTS_LANGUAGE, slow=self.config.TTS_SLOW)
+			# gTTS fallback with slightly slower pace for naturalness
+			tts = gTTS(text=text, lang=self.config.TTS_LANGUAGE, slow=True if (voice_gender and voice_gender.lower().startswith('n')) else self.config.TTS_SLOW)
 			tts.save(output_path)
 			logger.info(f"Audio generated successfully: {output_path}")
 			return output_path
