@@ -8,10 +8,10 @@ class Config:
     """Configuration class for the application"""
     
     # Gemini API Configuration
-    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyATAhnowhXOnFEjm1epqXVqjWtkWUYOSYk")
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyCW1KSXcsxSa_0mJlEUlJUPxrqu6N5Jgs0")
     
     # Application Configuration
-    APP_TITLE = os.getenv("APP_TITLE", "ZenoZeno AI Chatbot")
+    APP_TITLE = os.getenv("APP_TITLE", "ZenithIQ - AI-Powered Learning Platform")
     APP_ICON = os.getenv("APP_ICON", "🤖")
     DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
     

@@ -10,12 +10,16 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from ai_service import AIService
 from video_generator import VideoGenerator
+from mind_map_generator import MindMapGenerator
+from notes_generator import NotesGenerator
+from quiz_generator import QuizGenerator
+from study_planner import StudyPlanner
 from config import Config
 
 # Page configuration
 st.set_page_config(
-    page_title=Config.APP_TITLE,
-    page_icon=Config.APP_ICON,
+    page_title="ZenithIQ - AI Learning Platform",
+    page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -87,6 +91,14 @@ def initialize_session_state():
         st.session_state.ai_service = None
     if "video_generator" not in st.session_state:
         st.session_state.video_generator = None
+    if "mind_map_generator" not in st.session_state:
+        st.session_state.mind_map_generator = None
+    if "notes_generator" not in st.session_state:
+        st.session_state.notes_generator = None
+    if "quiz_generator" not in st.session_state:
+        st.session_state.quiz_generator = None
+    if "study_planner" not in st.session_state:
+        st.session_state.study_planner = None
     if "connection_status" not in st.session_state:
         st.session_state.connection_status = None
     if "last_response" not in st.session_state:
@@ -107,21 +119,35 @@ def initialize_session_state():
         st.session_state.reference_video_path = None
 
 def initialize_services():
-    """Initialize AI and video generation services"""
+    """Initialize all AI services automatically"""
     try:
+        # Initialize AI service
         if st.session_state.ai_service is None:
-            with st.spinner("Initializing AI service..."):
-                st.session_state.ai_service = AIService()
+            st.session_state.ai_service = AIService()
         
+        # Initialize video generator
         if st.session_state.video_generator is None:
-            with st.spinner("Initializing video generator..."):
-                st.session_state.video_generator = VideoGenerator()
+            st.session_state.video_generator = VideoGenerator()
+        
+        # Initialize mind map generator
+        if st.session_state.mind_map_generator is None:
+            st.session_state.mind_map_generator = MindMapGenerator()
+        
+        # Initialize notes generator
+        if st.session_state.notes_generator is None:
+            st.session_state.notes_generator = NotesGenerator()
+        
+        # Initialize quiz generator
+        if st.session_state.quiz_generator is None:
+            st.session_state.quiz_generator = QuizGenerator()
+        
+        # Initialize study planner
+        if st.session_state.study_planner is None:
+            st.session_state.study_planner = StudyPlanner()
         
         st.session_state.connection_status = "connected"
-        st.success("✅ All services initialized successfully!")
         return True
     except Exception as e:
-        st.error(f"❌ Failed to initialize services: {str(e)}")
         st.session_state.connection_status = "error"
         return False
 
@@ -203,10 +229,6 @@ def chat_interface():
     user_input = st.chat_input("Type your message here...")
     
     if user_input:
-        # Check if services are initialized
-        if st.session_state.ai_service is None:
-            st.error("❌ AI service not initialized. Please click 'Initialize Services' in the sidebar.")
-            return
         
         # Add user message to history
         st.session_state.messages.append({
@@ -294,9 +316,6 @@ def video_generator_interface():
         with colv2:
             voice_name = st.text_input("Voice name (optional)", placeholder="e.g., Adam, Rachel (ElevenLabs)")
         if st.button("🎬 Generate Video", use_container_width=True, key="generate_main_video"):
-            if st.session_state.ai_service is None or st.session_state.video_generator is None:
-                st.error("❌ Services not initialized. Click 'Initialize Services' in sidebar.")
-            else:
                 with st.spinner("Analyzing and generating video..."):
                     try:
                         # 1) Ingest content
@@ -443,12 +462,500 @@ def video_generator_interface():
                     except Exception as e:
                         st.error(f"❌ Failed to delete video: {e}")
 
+def mind_map_interface():
+    """Mind map generator interface tab"""
+    st.markdown("### 🗺️ Mind Map Generator")
+    
+    with st.container():
+        st.markdown("#### 🧠 Visual Learning with Mind Maps")
+        st.markdown("""
+        <div style='padding:10px;border-radius:10px;background:linear-gradient(135deg,#eef2f3,#e0ecff);border:1px solid #dfe7f3;'>
+        Create visual mind maps to organize concepts, ideas, and relationships. Perfect for brainstorming, studying, and understanding complex topics.
+        </div>
+        """, unsafe_allow_html=True)
+        
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            topic = st.text_input("Topic for Mind Map", placeholder="e.g., Machine Learning, Quantum Physics, Business Strategy", help="Enter a topic to create a mind map")
+        with col2:
+            output_format = st.selectbox("Output Format", ["Image", "Video"], index=0, help="Choose output format")
+        
+        if st.button("🗺️ Generate Mind Map", use_container_width=True, key="generate_mind_map"):
+            if not topic.strip():
+                st.warning("Please enter a topic for the mind map.")
+            else:
+                with st.spinner("Creating mind map..."):
+                    try:
+                        if output_format == "Image":
+                            # Generate mind map structure
+                            mind_map_data = st.session_state.mind_map_generator.generate_mind_map_structure(
+                                topic.strip(), st.session_state.ai_service
+                            )
+                            
+                            # Create mind map image
+                            image_path = st.session_state.mind_map_generator.create_mind_map_image(mind_map_data)
+                            
+                            # Display image
+                            st.image(image_path, caption=f"Mind Map: {topic}", use_column_width=True)
+                            
+                            # Download button
+                            with open(image_path, "rb") as file:
+                                st.download_button(
+                                    label="⬇️ Download Mind Map Image",
+                                    data=file.read(),
+                                    file_name=f"mind_map_{topic.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
+                                    mime="image/png",
+                                    use_container_width=True
+                                )
+                            
+                            # Cleanup
+                            if os.path.exists(image_path):
+                                os.unlink(image_path)
+                        
+                        else:  # Video format
+                            # Generate mind map video
+                            video_path = st.session_state.mind_map_generator.generate_mind_map_video(
+                                topic.strip(), st.session_state.ai_service
+                            )
+                            
+                            # Display video
+                            st.video(video_path)
+                            
+                            # Download button
+                            with open(video_path, "rb") as file:
+                                st.download_button(
+                                    label="⬇️ Download Mind Map Video",
+                                    data=file.read(),
+                                    file_name=f"mind_map_{topic.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4",
+                                    mime="video/mp4",
+                                    use_container_width=True
+                                )
+                            
+                            # Cleanup
+                            if os.path.exists(video_path):
+                                os.unlink(video_path)
+                        
+                        st.success("✅ Mind map generated successfully!")
+                        
+                    except Exception as e:
+                        st.error(f"❌ Failed to generate mind map: {e}")
+
+def notes_interface():
+    """Study notes generator interface tab"""
+    st.markdown("### 📝 Study Notes Generator")
+    
+    with st.container():
+        st.markdown("#### 📚 Comprehensive Study Materials")
+        st.markdown("""
+        <div style='padding:10px;border-radius:10px;background:linear-gradient(135deg,#eef2f3,#e0ecff);border:1px solid #dfe7f3;'>
+        Generate comprehensive study notes, summaries, flashcards, and study guides. Perfect for exam preparation and learning.
+        </div>
+        """, unsafe_allow_html=True)
+        
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            topic = st.text_input("Topic for Notes", placeholder="e.g., Calculus, Psychology, Programming", help="Enter a topic to generate study notes")
+        with col2:
+            note_type = st.selectbox("Note Type", ["comprehensive", "summary", "flashcards", "study_guide"], index=0, help="Choose the type of notes to generate")
+        
+        if st.button("📝 Generate Notes", use_container_width=True, key="generate_notes"):
+            if not topic.strip():
+                st.warning("Please enter a topic for the notes.")
+            else:
+                with st.spinner("Generating study notes..."):
+                    try:
+                        # Generate notes
+                        notes_data = st.session_state.notes_generator.generate_notes(
+                            topic.strip(), st.session_state.ai_service, note_type
+                        )
+                        
+                        # Display notes
+                        st.markdown(f"## 📝 {notes_data.get('topic', topic)} - {note_type.title()}")
+                        st.markdown(f"**Generated:** {notes_data.get('generated_at', 'Unknown')}")
+                        
+                        if note_type == "comprehensive":
+                            for section in notes_data.get('sections', []):
+                                st.markdown(f"### {section.get('title', 'Section')}")
+                                st.write(section.get('content', ''))
+                                
+                                if section.get('key_points'):
+                                    st.markdown("**Key Points:**")
+                                    for point in section['key_points']:
+                                        st.markdown(f"- {point}")
+                                
+                                if section.get('examples'):
+                                    st.markdown("**Examples:**")
+                                    for example in section['examples']:
+                                        st.markdown(f"- {example}")
+                                
+                                if section.get('tips'):
+                                    st.markdown("**Tips:**")
+                                    for tip in section['tips']:
+                                        st.markdown(f"- {tip}")
+                        
+                        elif note_type == "summary":
+                            st.markdown(f"**Overview:** {notes_data.get('overview', '')}")
+                            
+                            if notes_data.get('key_concepts'):
+                                st.markdown("**Key Concepts:**")
+                                for concept in notes_data['key_concepts']:
+                                    st.markdown(f"- {concept}")
+                            
+                            if notes_data.get('definitions'):
+                                st.markdown("**Definitions:**")
+                                for definition in notes_data['definitions']:
+                                    st.markdown(f"- **{definition.get('term', '')}**: {definition.get('definition', '')}")
+                        
+                        elif note_type == "flashcards":
+                            st.markdown("**Flashcards:**")
+                            for i, card in enumerate(notes_data.get('flashcards', []), 1):
+                                with st.expander(f"Card {i}: {card.get('front', '')}"):
+                                    st.markdown(f"**Answer:** {card.get('back', '')}")
+                                    st.markdown(f"**Category:** {card.get('category', '')}")
+                        
+                        elif note_type == "study_guide":
+                            if notes_data.get('learning_objectives'):
+                                st.markdown("**Learning Objectives:**")
+                                for objective in notes_data['learning_objectives']:
+                                    st.markdown(f"- {objective}")
+                            
+                            if notes_data.get('learning_path'):
+                                st.markdown("**Learning Path:**")
+                                for step in notes_data['learning_path']:
+                                    st.markdown(f"### Step {step.get('step', '')}: {step.get('title', '')}")
+                                    st.write(step.get('description', ''))
+                                    st.markdown(f"**Duration:** {step.get('duration', '')}")
+                        
+                        # Export to Markdown
+                        markdown_path = st.session_state.notes_generator.export_notes_to_markdown(notes_data)
+                        with open(markdown_path, "rb") as file:
+                            st.download_button(
+                                label="⬇️ Download Notes (Markdown)",
+                                data=file.read(),
+                                file_name=f"notes_{topic.replace(' ', '_')}_{note_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
+                                mime="text/markdown",
+                                use_container_width=True
+                            )
+                        
+                        # Cleanup
+                        if os.path.exists(markdown_path):
+                            os.unlink(markdown_path)
+                        
+                        st.success("✅ Study notes generated successfully!")
+                        
+                    except Exception as e:
+                        st.error(f"❌ Failed to generate notes: {e}")
+
+def quiz_interface():
+    """Quiz generator interface tab"""
+    st.markdown("### ❓ Quiz Generator")
+    
+    with st.container():
+        st.markdown("#### 🧠 Interactive Learning Assessment")
+        st.markdown("""
+        <div style='padding:10px;border-radius:10px;background:linear-gradient(135deg,#eef2f3,#e0ecff);border:1px solid #dfe7f3;'>
+        Create interactive quizzes to test knowledge and understanding. Multiple question types and difficulty levels available.
+        </div>
+        """, unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns([2, 1, 1])
+        with col1:
+            topic = st.text_input("Topic for Quiz", placeholder="e.g., Mathematics, Science, History", help="Enter a topic to create a quiz")
+        with col2:
+            quiz_type = st.selectbox("Quiz Type", ["multiple_choice", "true_false", "fill_blank", "matching", "essay"], index=0, help="Choose quiz type")
+        with col3:
+            num_questions = st.number_input("Number of Questions", min_value=5, max_value=50, value=10, help="Number of questions in the quiz")
+        
+        col4, col5 = st.columns([1, 1])
+        with col4:
+            difficulty = st.selectbox("Difficulty", ["easy", "medium", "hard"], index=1, help="Quiz difficulty level")
+        
+        if st.button("❓ Generate Quiz", use_container_width=True, key="generate_quiz"):
+            if not topic.strip():
+                st.warning("Please enter a topic for the quiz.")
+            else:
+                with st.spinner("Generating quiz..."):
+                    try:
+                        # Generate quiz
+                        quiz_data = st.session_state.quiz_generator.generate_quiz(
+                            topic.strip(), st.session_state.ai_service, quiz_type, num_questions, difficulty
+                        )
+                        
+                        # Store quiz data in session state
+                        st.session_state.current_quiz = quiz_data
+                        st.session_state.quiz_answers = {}
+                        
+                        st.success("✅ Quiz generated successfully!")
+                        st.rerun()
+                        
+                    except Exception as e:
+                        st.error(f"❌ Failed to generate quiz: {e}")
+        
+        # Display quiz if available
+        if hasattr(st.session_state, 'current_quiz') and st.session_state.current_quiz:
+            quiz_data = st.session_state.current_quiz
+            
+            st.markdown(f"## ❓ {quiz_data.get('topic', 'Quiz')} - {quiz_data.get('quiz_type', 'Quiz').title()}")
+            st.markdown(f"**Difficulty:** {quiz_data.get('difficulty', 'Medium')} | **Questions:** {quiz_data.get('num_questions', 0)}")
+            
+            if quiz_data.get('instructions'):
+                st.markdown(f"**Instructions:** {quiz_data['instructions']}")
+            
+            # Quiz interface
+            with st.form("quiz_form"):
+                if quiz_data.get('quiz_type') == 'multiple_choice':
+                    for i, question in enumerate(quiz_data.get('questions', [])):
+                        st.markdown(f"**{i+1}.** {question.get('question', '')}")
+                        options = question.get('options', [])
+                        answer = st.radio(f"Answer for question {i+1}", options, key=f"q{i}")
+                        st.session_state.quiz_answers[str(i)] = answer
+                
+                elif quiz_data.get('quiz_type') == 'true_false':
+                    for i, question in enumerate(quiz_data.get('questions', [])):
+                        st.markdown(f"**{i+1}.** {question.get('statement', '')}")
+                        answer = st.radio(f"Answer for question {i+1}", ["True", "False"], key=f"q{i}")
+                        st.session_state.quiz_answers[str(i)] = answer == "True"
+                
+                elif quiz_data.get('quiz_type') == 'fill_blank':
+                    for i, question in enumerate(quiz_data.get('questions', [])):
+                        st.markdown(f"**{i+1}.** {question.get('sentence', '')}")
+                        answer = st.text_input(f"Answer for question {i+1}", key=f"q{i}")
+                        st.session_state.quiz_answers[str(i)] = answer
+                
+                elif quiz_data.get('quiz_type') == 'matching':
+                    items = quiz_data.get('items', [])
+                    st.markdown("Match each term with its definition:")
+                    
+                    # Shuffle items for quiz
+                    import random
+                    shuffled_items = items.copy()
+                    random.shuffle(shuffled_items)
+                    
+                    for i, item in enumerate(shuffled_items):
+                        st.markdown(f"**{i+1}.** {item.get('term', '')}")
+                    
+                    st.markdown("**Definitions:**")
+                    definitions = [item.get('definition', '') for item in items]
+                    random.shuffle(definitions)
+                    
+                    for i, definition in enumerate(definitions):
+                        st.markdown(f"**{chr(65+i)}.** {definition}")
+                    
+                    # Simple matching interface
+                    for i in range(len(items)):
+                        answer = st.text_input(f"Match for term {i+1} (enter A, B, C, etc.)", key=f"q{i}")
+                        st.session_state.quiz_answers[str(i)] = answer
+                
+                elif quiz_data.get('quiz_type') == 'essay':
+                    for i, question in enumerate(quiz_data.get('questions', [])):
+                        st.markdown(f"**{i+1}.** {question.get('prompt', '')}")
+                        st.markdown(f"**Suggested Length:** {question.get('suggested_length', '')}")
+                        answer = st.text_area(f"Answer for question {i+1}", key=f"q{i}", height=150)
+                        st.session_state.quiz_answers[str(i)] = answer
+                
+                submitted = st.form_submit_button("📊 Grade Quiz", use_container_width=True)
+                
+                if submitted:
+                    try:
+                        # Grade the quiz
+                        results = st.session_state.quiz_generator.grade_quiz(quiz_data, st.session_state.quiz_answers)
+                        
+                        # Display results
+                        st.markdown("## 📊 Quiz Results")
+                        st.markdown(f"**Score:** {results.get('score_percentage', 0)}%")
+                        st.markdown(f"**Correct Answers:** {results.get('correct_answers', 0)}/{results.get('total_questions', 0)}")
+                        st.markdown(f"**Status:** {'✅ Passed' if results.get('passed', False) else '❌ Failed'}")
+                        st.markdown(f"**Feedback:** {results.get('feedback', '')}")
+                        
+                        # Detailed results
+                        with st.expander("📋 Detailed Results"):
+                            for i, result in enumerate(results.get('detailed_results', []), 1):
+                                status = "✅" if result.get('correct', False) else "❌"
+                                question_text = result.get('question', result.get('statement', result.get('sentence', '')))
+                                st.markdown(f"**{i}.** {status} {question_text}")
+                                if not result.get('correct', False):
+                                    st.markdown(f"   Your answer: {result.get('user_answer', '')}")
+                                    st.markdown(f"   Correct answer: {result.get('correct_answer', '')}")
+                                st.markdown(f"   Explanation: {result.get('explanation', '')}")
+                        
+                    except Exception as e:
+                        st.error(f"❌ Failed to grade quiz: {e}")
+            
+            # Export quiz
+            col1, col2 = st.columns([1, 1])
+            with col1:
+                markdown_path = st.session_state.quiz_generator.export_quiz_to_markdown(quiz_data)
+                with open(markdown_path, "rb") as file:
+                    st.download_button(
+                        label="⬇️ Download Quiz (Markdown)",
+                        data=file.read(),
+                        file_name=f"quiz_{topic.replace(' ', '_')}_{quiz_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
+                        mime="text/markdown",
+                        use_container_width=True
+                    )
+            
+            with col2:
+                if st.button("🔄 New Quiz", use_container_width=True):
+                    st.session_state.current_quiz = None
+                    st.session_state.quiz_answers = {}
+                    st.rerun()
+
+def study_planner_interface():
+    """Study planner interface tab"""
+    st.markdown("### 📅 Study Planner")
+    
+    with st.container():
+        st.markdown("#### 🎯 Personalized Learning Plans")
+        st.markdown("""
+        <div style='padding:10px;border-radius:10px;background:linear-gradient(135deg,#eef2f3,#e0ecff);border:1px solid #dfe7f3;'>
+        Create personalized study plans with schedules, objectives, and progress tracking. Perfect for exam preparation and long-term learning.
+        </div>
+        """, unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns([2, 1, 1])
+        with col1:
+            topic = st.text_input("Topic for Study Plan", placeholder="e.g., Advanced Mathematics, Programming, Language Learning", help="Enter a topic to create a study plan")
+        with col2:
+            study_duration = st.number_input("Study Duration (days)", min_value=1, max_value=90, value=7, help="Number of days to study")
+        with col3:
+            hours_per_day = st.number_input("Hours per Day", min_value=1, max_value=8, value=2, help="Hours to study each day")
+        
+        col4, col5 = st.columns([1, 1])
+        with col4:
+            difficulty = st.selectbox("Difficulty Level", ["easy", "medium", "hard"], index=1, help="Study difficulty level")
+        with col5:
+            study_method = st.selectbox("Study Method", ["pomodoro", "traditional", "intensive", "casual"], index=0, help="Study technique to use")
+        
+        if st.button("📅 Generate Study Plan", use_container_width=True, key="generate_study_plan"):
+            if not topic.strip():
+                st.warning("Please enter a topic for the study plan.")
+            else:
+                with st.spinner("Creating study plan..."):
+                    try:
+                        # Generate study plan
+                        study_plan = st.session_state.study_planner.generate_study_plan(
+                            topic.strip(), st.session_state.ai_service, study_duration, hours_per_day, difficulty, study_method
+                        )
+                        
+                        # Store study plan in session state
+                        st.session_state.current_study_plan = study_plan
+                        
+                        st.success("✅ Study plan generated successfully!")
+                        st.rerun()
+                        
+                    except Exception as e:
+                        st.error(f"❌ Failed to generate study plan: {e}")
+        
+        # Display study plan if available
+        if hasattr(st.session_state, 'current_study_plan') and st.session_state.current_study_plan:
+            plan = st.session_state.current_study_plan
+            
+            st.markdown(f"## 📅 Study Plan: {plan.get('topic', 'Topic')}")
+            st.markdown(f"**Duration:** {plan.get('study_duration', 0)} days | **Hours per Day:** {plan.get('hours_per_day', 0)} | **Method:** {plan.get('study_method', '').title()}")
+            
+            # Progress tracking
+            progress = plan.get('progress_tracking', {})
+            st.markdown("### 📊 Progress Tracking")
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Units", progress.get('total_units', 0))
+            with col2:
+                st.metric("Completed Units", progress.get('completed_units', 0))
+            with col3:
+                st.metric("Total Hours", progress.get('total_hours', 0))
+            with col4:
+                st.metric("Progress", f"{progress.get('progress_percentage', 0):.1f}%")
+            
+            # Learning objectives
+            with st.expander("🎯 Learning Objectives"):
+                for i, objective in enumerate(plan.get('objectives', []), 1):
+                    st.markdown(f"**{i}.** {objective.get('objective', '')}")
+                    st.markdown(f"   - Category: {objective.get('category', '')}")
+                    st.markdown(f"   - Difficulty: {objective.get('difficulty', '')}")
+                    st.markdown(f"   - Timeframe: {objective.get('timeframe', '')}")
+            
+            # Topic breakdown
+            with st.expander("📚 Topic Breakdown"):
+                for i, unit in enumerate(plan.get('topic_breakdown', []), 1):
+                    st.markdown(f"**{i}.** {unit.get('title', '')}")
+                    st.write(unit.get('description', ''))
+                    st.markdown(f"   - Hours: {unit.get('estimated_hours', 0)}")
+                    st.markdown(f"   - Difficulty: {unit.get('difficulty', '')}")
+            
+            # Study schedule
+            with st.expander("📅 Study Schedule"):
+                schedule = plan.get('schedule', {})
+                for daily in schedule.get('daily_schedules', []):
+                    st.markdown(f"### Day {daily.get('day', '')} - {daily.get('day_of_week', '')}")
+                    for session in daily.get('sessions', []):
+                        st.markdown(f"- **{session.get('unit', '')}** ({session.get('duration', 0)} hours)")
+            
+            # Study tips
+            with st.expander("💡 Study Tips"):
+                for tip in plan.get('study_tips', []):
+                    st.markdown(f"- {tip}")
+            
+            # Resources
+            with st.expander("📖 Study Resources"):
+                for resource in plan.get('resources', []):
+                    st.markdown(f"**{resource.get('title', '')}**")
+                    st.markdown(f"- Type: {resource.get('type', '')}")
+                    st.markdown(f"- Description: {resource.get('description', '')}")
+                    if resource.get('url'):
+                        st.markdown(f"- URL: {resource.get('url', '')}")
+            
+            # Progress update
+            st.markdown("### 📝 Update Progress")
+            with st.form("progress_update"):
+                completed_units = st.multiselect(
+                    "Completed Units",
+                    [unit.get('title', '') for unit in plan.get('topic_breakdown', [])],
+                    help="Select units you have completed"
+                )
+                completed_hours = st.number_input("Hours Studied Today", min_value=0.0, value=0.0, step=0.5)
+                notes = st.text_area("Notes", placeholder="Any notes about your study session...")
+                
+                if st.form_submit_button("📊 Update Progress"):
+                    try:
+                        # Update progress
+                        updated_plan = st.session_state.study_planner.update_progress(
+                            plan, completed_units, completed_hours, notes
+                        )
+                        st.session_state.current_study_plan = updated_plan
+                        st.success("✅ Progress updated successfully!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Failed to update progress: {e}")
+            
+            # Export study plan
+            col1, col2 = st.columns([1, 1])
+            with col1:
+                markdown_path = st.session_state.study_planner.export_study_plan_to_markdown(plan)
+                with open(markdown_path, "rb") as file:
+                    st.download_button(
+                        label="⬇️ Download Study Plan (Markdown)",
+                        data=file.read(),
+                        file_name=f"study_plan_{topic.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
+                        mime="text/markdown",
+                        use_container_width=True
+                    )
+            
+            with col2:
+                if st.button("🔄 New Study Plan", use_container_width=True):
+                    st.session_state.current_study_plan = None
+                    st.rerun()
+
 def main():
     """Main application function"""
-    st.markdown('<h1 class="main-header">🤖 ZenoZeno AI Chatbot + Video Generator</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">🤖 ZenithIQ - AI-Powered Learning Platform</h1>', unsafe_allow_html=True)
     
     # Initialize session state
     initialize_session_state()
+    
+    # Automatically initialize all services
+    if not initialize_services():
+        st.error("❌ Failed to initialize services. Please check your configuration.")
+        return
     
     # Sidebar for controls
     with st.sidebar:
@@ -456,15 +963,11 @@ def main():
         
         # Service status
         if st.session_state.connection_status == "connected":
-            st.success("🟢 Services Connected")
+            st.success("🟢 All Services Connected")
         elif st.session_state.connection_status == "error":
             st.error("🔴 Service Error")
         else:
             st.info("🟡 Services Not Initialized")
-        
-        # Initialize services button
-        if st.button("🔄 Initialize Services", use_container_width=True, key="initialize_services"):
-            initialize_services()
         
         st.divider()
         
@@ -500,13 +1003,32 @@ def main():
             st.metric("AI Responses", ai_messages)
     
     # Main content area with tabs
-    tab1, tab2 = st.tabs(["💬 Chat", "📹 Video Generator"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        "💬 Chat", 
+        "📹 Video Generator", 
+        "🗺️ Mind Maps", 
+        "📝 Study Notes", 
+        "❓ Quizzes", 
+        "📅 Study Planner"
+    ])
     
     with tab1:
         chat_interface()
     
     with tab2:
         video_generator_interface()
+    
+    with tab3:
+        mind_map_interface()
+    
+    with tab4:
+        notes_interface()
+    
+    with tab5:
+        quiz_interface()
+    
+    with tab6:
+        study_planner_interface()
 
 if __name__ == "__main__":
     main() 

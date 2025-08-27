@@ -1,6 +1,6 @@
-# 🤖 ZenoZeno - AI Chatbot with Video Generator
+# 🎓 ZenithIQ - AI-Powered Learning Platform
 
-A sophisticated AI chatbot application that combines Google's Gemini 2.5 Pro model with automated video generation capabilities. Create educational content, explanations, and tutorials with just a conversation!
+A comprehensive AI-powered educational platform that combines Google's Gemini 2.5 Pro model with advanced learning tools. Create educational content, interactive assessments, study materials, and personalized learning plans with AI assistance!
 
 ## ✨ Features
 
@@ -18,6 +18,34 @@ A sophisticated AI chatbot application that combines Google's Gemini 2.5 Pro mod
 - **Progress Tracking**: Real-time video generation progress
 - **Download Support**: Direct video download functionality
 - **Multiple Formats**: Support for various video settings
+
+### 🗺️ Mind Map Generator
+- **Visual Learning**: Create interactive mind maps for any topic
+- **AI-Powered Structure**: Intelligent topic breakdown and organization
+- **Multiple Output Formats**: Generate as images or videos
+- **Professional Design**: Clean, educational visual layouts
+- **Download Support**: Export mind maps in various formats
+
+### 📝 Study Notes Generator
+- **Comprehensive Notes**: Generate detailed study materials
+- **Multiple Note Types**: Comprehensive, summary, flashcards, and study guides
+- **AI-Enhanced Content**: Intelligent content generation and organization
+- **Export Functionality**: Download notes in Markdown format
+- **Educational Focus**: Designed for effective learning and retention
+
+### ❓ Quiz Generator
+- **Interactive Assessment**: Create quizzes with multiple question types
+- **Question Types**: Multiple choice, true/false, fill-in-the-blank, matching, essay
+- **Auto-Grading**: Instant quiz grading with detailed feedback
+- **Difficulty Levels**: Easy, medium, and hard difficulty settings
+- **Progress Tracking**: Monitor learning progress and performance
+
+### 📅 Study Planner
+- **Personalized Plans**: Create customized study schedules
+- **Progress Tracking**: Monitor study progress and achievements
+- **Study Methods**: Support for Pomodoro, traditional, intensive, and casual methods
+- **Resource Management**: Curated study resources and materials
+- **Goal Setting**: Set and track learning objectives
 
 ### 🎨 User Interface
 - **Unified Interface**: Single application with tabbed interface

@@ -13,7 +13,7 @@ import io
 
 # Attempt to import MoviePy; provide a clear message if unavailable
 try:
-	from moviepy.editor import AudioFileClip, VideoFileClip
+	from moviepy.editor import AudioFileClip, VideoFileClip, concatenate_audioclips
 	MOVIEPY_AVAILABLE = True
 except Exception as _moviepy_import_error:
 	MOVIEPY_AVAILABLE = False
@@ -56,6 +56,8 @@ class VideoGenerator:
 		self.default_background = self._load_default_background()
 		# Cache for topic-related backgrounds
 		self.topic_backgrounds = {}
+		# Professional NotebookLM-style backgrounds
+		self.notebooklm_backgrounds = self._create_notebooklm_backgrounds()
 	
 	def _load_default_background(self) -> Optional[np.ndarray]:
 		"""Load the default background image testbg.jpeg"""
@@ -171,29 +173,47 @@ class VideoGenerator:
 		return result
 	
 	def _create_enhanced_slide_content(self, slide: Dict) -> str:
-		"""Create enhanced slide content with better flow and structure - NotebookLM style"""
+		"""Create enhanced slide content with detailed explanations for each subtopic"""
 		title = slide.get("title", "")
 		bullets = slide.get("bullets", [])
 		narration = slide.get("narration", "")
+		subtopics = slide.get("subtopics", [])
 		
-		# For NotebookLM style, create flowing explanations, not bullet reading
+		# Use the detailed narration that explains each subtopic
 		if narration:
-			# Use existing narration but clean it up
+			# Use existing detailed narration that covers each subtopic
 			content = narration
 		else:
-			# Create flowing explanation from bullets (not reading them)
-			bullet_texts = []
-			for i, bullet in enumerate(bullets):
-				if i == 0:
-					bullet_texts.append(f"Let me explain {bullet.lower()}")
-				elif i == len(bullets) - 1:
-					bullet_texts.append(f"Finally, {bullet.lower()}")
-				else:
-					bullet_texts.append(f"Next, {bullet.lower()}")
+			# Create detailed explanation from subtopics and bullets
+			content_parts = []
 			
-			content = ". ".join(bullet_texts)
+			# Start with title introduction
+			if title:
+				content_parts.append(f"Let me explain {title.lower()}")
+			
+			# Include detailed subtopic explanations
+			if subtopics:
+				content_parts.append("This covers several key areas:")
+				for i, subtopic in enumerate(subtopics):
+					if i == len(subtopics) - 1:
+						content_parts.append(f"and finally, let me explain {subtopic.lower()}")
+					else:
+						content_parts.append(f"first, let me explain {subtopic.lower()}")
+			
+			# Include detailed bullet explanations
+			if bullets:
+				content_parts.append("Let me explain each point in detail:")
+				for i, bullet in enumerate(bullets):
+					if i == 0:
+						content_parts.append(f"Starting with {bullet.lower()}")
+					elif i == len(bullets) - 1:
+						content_parts.append(f"Finally, {bullet.lower()}")
+					else:
+						content_parts.append(f"Next, {bullet.lower()}")
+			
+			content = ". ".join(content_parts)
 		
-		# Improve content flow for NotebookLM style
+		# Improve content flow for detailed explanations
 		content = self._improve_content_flow(content)
 		
 		return content
@@ -273,96 +293,110 @@ class VideoGenerator:
 		
 		return img
 
-	def _draw_clean_slide_text(self, frame: np.ndarray, title: str, bullets: list, topic: str = "", narration: str = "") -> np.ndarray:
-		"""Clean, NotebookLM-style text overlay with minimal content and clear focus"""
-		img = frame.copy()
+	def _draw_clean_slide_text(self, frame: np.ndarray, title: str, bullets: list, topic: str = "", narration: str = "", subtopics: list = None, topic_category: str = "default") -> np.ndarray:
+		"""NotebookLM-style text overlay with clean, minimal design and professional backgrounds"""
+		# Use NotebookLM-style background instead of frame
+		background = self._get_notebooklm_background(topic_category)
+		img = self._resize_and_crop(background, frame.shape[1], frame.shape[0])
 		
-		# Create a subtle overlay for better readability
+		# Add subtle overlay for better text readability
 		overlay = img.copy()
 		height, width = img.shape[:2]
 		
-		# Subtle gradient overlay (lighter than before)
+		# Very subtle gradient overlay for NotebookLM style
 		for y in range(height):
-			alpha = 0.15 + (0.1 * y / height)  # Much lighter overlay
+			alpha = 0.1 + (0.05 * y / height)  # Very subtle overlay
 			overlay[y, :] = img[y, :] * (1 - alpha) + np.array([0, 0, 0]) * alpha
 		
 		img = overlay.astype(np.uint8)
 		
-		# Add topic indicator at top (subtle)
+		# Add clean header with topic (minimal)
 		if topic:
-			topic_bg = np.zeros((50, width, 3), dtype=np.uint8)
-			topic_bg[:] = (40, 80, 160)  # Subtle blue
-			img[20:70, :] = cv2.addWeighted(img[20:70, :], 0.8, topic_bg, 0.2, 0)
+			# Subtle header bar
+			header_bg = np.zeros((60, width, 3), dtype=np.uint8)
+			header_bg[:] = (255, 255, 255)  # White background
+			img[20:80, :] = cv2.addWeighted(img[20:80, :], 0.9, header_bg, 0.1, 0)
 			
-			# Topic text (smaller, subtle)
-			cv2.putText(img, f"Topic: {topic}", (30, 45), 
-						cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, 
+			# Topic text (clean, minimal)
+			cv2.putText(img, f"{topic}", (40, 50), 
+						cv2.FONT_HERSHEY_SIMPLEX, 0.7, (50, 50, 50), 1, 
 						lineType=cv2.LINE_AA)
 		
-		# Title - clean and centered (main focus)
+		# Title - clean and prominent (NotebookLM style)
 		if title:
 			safe_title = self._sanitize_overlay_text(str(title))
-			max_width = width - 100
-			title_lines = self._wrap_text_to_width(safe_title, 1.5, 2, max_width)
+			max_width = width - 120
+			title_lines = self._wrap_text_to_width(safe_title, 2.0, 2, max_width)
 			
 			# Center the title prominently
-			y_title = 150
+			y_title = 140
 			for tl in title_lines[:2]:
-				text_size = cv2.getTextSize(tl, cv2.FONT_HERSHEY_SIMPLEX, 1.5, 2)[0]
+				text_size = cv2.getTextSize(tl, cv2.FONT_HERSHEY_SIMPLEX, 2.0, 2)[0]
 				x_center = (width - text_size[0]) // 2
-				x_center = max(50, min(x_center, width - text_size[0] - 50))
+				x_center = max(60, min(x_center, width - text_size[0] - 60))
 				
-				# Clean title background (minimal)
-				cv2.rectangle(img, (x_center - 15, y_title - 40), 
-							(x_center + text_size[0] + 15, y_title + 15), 
-							(0, 0, 0), -1)
-				cv2.rectangle(img, (x_center - 15, y_title - 40), 
-							(x_center + text_size[0] + 15, y_title + 15), 
-							(255, 255, 255), 1)
-				
+				# Clean title (no background box for NotebookLM style)
 				cv2.putText(img, tl, (x_center, y_title), 
-							cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 2, 
+							cv2.FONT_HERSHEY_SIMPLEX, 2.0, (255, 255, 255), 2, 
 							lineType=cv2.LINE_AA)
-				y_title += 60
+				y_title += 80
 		
-		# Key points - minimal, clean (only 2-3 main points)
-		key_points = bullets[:3]  # Limit to 3 key points
-		y_start = 280
+		# Subtopics - clean, minimal (NotebookLM style)
+		if subtopics:
+			y_subtopics = y_title + 40
+			cv2.putText(img, "Key Areas:", (80, y_subtopics), 
+						cv2.FONT_HERSHEY_SIMPLEX, 1.2, (200, 200, 200), 1, 
+						lineType=cv2.LINE_AA)
+			
+			y_subtopics += 50
+			for i, subtopic in enumerate(subtopics[:3]):  # Limit to 3 subtopics
+				safe_subtopic = self._sanitize_overlay_text(str(subtopic))
+				max_width = width - 200
+				wrapped = self._wrap_text_to_width(safe_subtopic, 1.0, 1, max_width)
+				
+				for j, line in enumerate(wrapped):
+					y = y_subtopics + i * 45 + j * 30
+					
+					# Clean subtopic (no background for NotebookLM style)
+					cv2.putText(img, f"• {line}", (100, y), 
+								cv2.FONT_HERSHEY_SIMPLEX, 1.0, (220, 220, 220), 1, 
+								lineType=cv2.LINE_AA)
+			
+			y_start = y_subtopics + len(subtopics[:3]) * 45 + 60
+		else:
+			y_start = y_title + 60
+		
+		# Bullet points - clean, minimal (NotebookLM style)
+		y_start = max(y_start, 320)
 		line_height = 50
 		
-		for i, point in enumerate(key_points):
-			safe_point = self._sanitize_overlay_text(str(point))
-			max_width = width - 100
-			wrapped = self._wrap_text_to_width(safe_point, 1.0, 1, max_width)
+		for i, bullet in enumerate(bullets[:5]):  # Show up to 5 bullets
+			safe_bullet = self._sanitize_overlay_text(str(bullet))
+			max_width = width - 120
+			wrapped = self._wrap_text_to_width(safe_bullet, 1.1, 1, max_width)
 			
 			for j, line in enumerate(wrapped):
 				y = y_start + i * line_height + j * 35
 				
-				# Clean bullet background (minimal)
-				text_size = cv2.getTextSize(f"• {line}", cv2.FONT_HERSHEY_SIMPLEX, 1.0, 1)[0]
-				cv2.rectangle(img, (60, y - 15), (70 + text_size[0], y + 10), 
-							(0, 0, 0), -1)
-				
-				cv2.putText(img, f"• {line}", (70, y), 
-							cv2.FONT_HERSHEY_SIMPLEX, 1.0, (240, 240, 240), 1, 
+				# Clean bullet (no background for NotebookLM style)
+				cv2.putText(img, f"• {line}", (80, y), 
+							cv2.FONT_HERSHEY_SIMPLEX, 1.1, (240, 240, 240), 1, 
 							lineType=cv2.LINE_AA)
 		
-		# Add narration content - THIS IS THE KEY FIX!
-		# Get narration from the slide data
-		narration = getattr(self, '_current_slide_narration', '')
+		# Narration content - clean, minimal (NotebookLM style)
 		if narration:
-			# Display narration content below key points
-			y_narration = y_start + len(key_points) * line_height + 80
-			max_width = width - 120
+			# Display narration content in a clean way
+			y_narration = y_start + len(bullets[:5]) * line_height + 80
+			max_width = width - 100
 			
-			# Split narration into readable chunks
+			# Split narration into readable lines
 			words = narration.split()
 			lines = []
 			current_line = ""
 			
 			for word in words:
 				test_line = current_line + " " + word if current_line else word
-				if len(test_line) * 12 <= max_width:  # Approximate character width
+				if len(test_line) * 12 <= max_width:  # Clean line width
 					current_line = test_line
 				else:
 					if current_line:
@@ -372,17 +406,13 @@ class VideoGenerator:
 			if current_line:
 				lines.append(current_line)
 			
-			# Display narration lines
-			for i, line in enumerate(lines[:6]):  # Limit to 6 lines
+			# Display narration lines with clean formatting
+			for i, line in enumerate(lines[:6]):  # Show up to 6 lines
 				y = y_narration + i * 30
 				
-				# Clean background for narration
-				text_size = cv2.getTextSize(line, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 1)[0]
-				cv2.rectangle(img, (60, y - 10), (70 + text_size[0], y + 15), 
-							(0, 0, 0), -1)
-				
-				cv2.putText(img, line, (70, y), 
-							cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 1, 
+				# Clean narration text (no background for NotebookLM style)
+				cv2.putText(img, line, (80, y), 
+							cv2.FONT_HERSHEY_SIMPLEX, 0.8, (180, 180, 180), 1, 
 							lineType=cv2.LINE_AA)
 		
 		return img
@@ -403,6 +433,43 @@ class VideoGenerator:
 		except Exception as e:
 			logger.error(f"Error setting default background image: {e}")
 		return False
+
+	def _parse_markdown_script(self, script: str) -> list:
+		"""Parse markdown script into slides"""
+		slides = []
+		lines = script.strip().split('\n')
+		current_slide = None
+		
+		for line in lines:
+			line = line.strip()
+			if not line:
+				continue
+			
+			# Check for slide header (###)
+			if line.startswith('###'):
+				# Save previous slide if exists
+				if current_slide:
+					slides.append(current_slide)
+				
+				# Start new slide
+				title = line[3:].strip()
+				current_slide = {
+					'title': title,
+					'bullets': [],
+					'subtopics': [],
+					'narration': ''
+				}
+			
+			# Check for bullet points (-)
+			elif line.startswith('-') and current_slide:
+				bullet = line[1:].strip()
+				current_slide['bullets'].append(bullet)
+		
+		# Add the last slide
+		if current_slide:
+			slides.append(current_slide)
+		
+		return slides
 
 	def _parse_explainer_script(self, script: str) -> list:
 		"""Parse a structured script into slides.
@@ -497,7 +564,8 @@ class VideoGenerator:
 		"""Sanitize for OpenCV font: keep ASCII, remove common punctuation that clutters overlays."""
 		try:
 			ascii_text = text.encode("ascii", errors="ignore").decode("ascii")
-			for ch in [".", "?", ":", ";", "•", "–", "—"]:
+			# Remove question marks and related patterns
+			for ch in ["?", "??", "???", "????", "?????", ".", ":", ";", "•", "–", "—"]:
 				ascii_text = ascii_text.replace(ch, "")
 			return ascii_text
 		except Exception:
@@ -529,10 +597,10 @@ class VideoGenerator:
 				y += 34
 		return img
 
-	def _draw_slide_text_styled(self, frame: np.ndarray, title: str, bullets: list, style: Optional[dict]) -> np.ndarray:
-		"""Overlay title and bullets with optional style guidance."""
+	def _draw_slide_text_styled(self, frame: np.ndarray, title: str, bullets: list, style: Optional[dict], subtopics: list = None, narration: str = "", topic_category: str = "default") -> np.ndarray:
+		"""Overlay title, subtopics, bullets, and narration with optional style guidance."""
 		if not style:
-			return self._draw_slide_text(frame, title, bullets)
+			return self._draw_clean_slide_text(frame, title, bullets, narration=narration, subtopics=subtopics, topic_category=topic_category)
 		img = frame.copy()
 		overlay = img.copy()
 		overlay_color = (0, 0, 0)
@@ -548,6 +616,7 @@ class VideoGenerator:
 			text_color = (int(rgb[2]), int(rgb[1]), int(rgb[0]))
 		title_scale = float(style.get("title_scale", 1.1))
 		bullet_scale = float(style.get("bullet_scale", 0.8))
+		
 		# Title
 		if title:
 			safe_title = self._sanitize_overlay_text(str(title))
@@ -557,8 +626,29 @@ class VideoGenerator:
 			for tl in title_lines[:2]:
 				cv2.putText(img, tl, (60, y_title), cv2.FONT_HERSHEY_SIMPLEX, title_scale, text_color, 3, lineType=cv2.LINE_AA)
 				y_title += int(42 * (title_scale / 1.1))
+		
+		# Subtopics
+		y_subtopics = y_title + 30
+		if subtopics:
+			cv2.putText(img, "Key Subtopics:", (60, y_subtopics), 
+						cv2.FONT_HERSHEY_SIMPLEX, 0.9, text_color, 2, 
+						lineType=cv2.LINE_AA)
+			y_subtopics += 30
+			for i, subtopic in enumerate(subtopics[:3]):
+				safe_subtopic = self._sanitize_overlay_text(str(subtopic))
+				max_width = img.shape[1] - 200
+				wrapped = self._wrap_text_to_width(safe_subtopic, 0.8, 2, max_width)
+				for j, line in enumerate(wrapped):
+					y = y_subtopics + i * 30 + j * 20
+					cv2.putText(img, f"• {line}", (80, y), 
+								cv2.FONT_HERSHEY_SIMPLEX, 0.8, text_color, 2, 
+								lineType=cv2.LINE_AA)
+			y_start = y_subtopics + len(subtopics[:3]) * 30 + 40
+		else:
+			y_start = y_title + 40
+		
 		# Bullets
-		y = 170
+		y = y_start
 		for bullet in bullets:
 			safe_bullet = self._sanitize_overlay_text(str(bullet))
 			max_width = img.shape[1] - 120
@@ -566,6 +656,33 @@ class VideoGenerator:
 			for line in wrapped:
 				cv2.putText(img, f"- {line}", (60, y), cv2.FONT_HERSHEY_SIMPLEX, bullet_scale, text_color, 2, lineType=cv2.LINE_AA)
 				y += int(34 * (bullet_scale / 0.8))
+		
+		# Narration
+		if narration:
+			y_narration = y + 40
+			max_width = img.shape[1] - 100
+			words = narration.split()
+			lines = []
+			current_line = ""
+			
+			for word in words:
+				test_line = current_line + " " + word if current_line else word
+				if len(test_line) * 11 <= max_width:
+					current_line = test_line
+				else:
+					if current_line:
+						lines.append(current_line)
+					current_line = word
+			
+			if current_line:
+				lines.append(current_line)
+			
+			for i, line in enumerate(lines[:6]):
+				y = y_narration + i * 25
+				cv2.putText(img, line, (60, y), 
+							cv2.FONT_HERSHEY_SIMPLEX, 0.6, text_color, 1, 
+							lineType=cv2.LINE_AA)
+		
 		return img
 
 	def extract_style_from_reference(self, reference_video_path: str, max_samples: int = 60) -> dict:
@@ -888,8 +1005,8 @@ class VideoGenerator:
 		elif self.default_background is not None:
 			frame = self._resize_and_crop(self.default_background, width, height)
 		else:
-		   frame = np.zeros((height, width, 3), dtype=np.uint8)
-		   frame[:] = (20, 30, 45)
+			frame = np.zeros((height, width, 3), dtype=np.uint8)
+			frame[:] = (20, 30, 45)
 		
 		lines = self._wrap_text_fixed_width(visible_text, max_chars_per_line=40)
 		
@@ -1059,152 +1176,161 @@ class VideoGenerator:
 	def generate_slideshow_video(
 		self,
 		script: str,
-		image_paths: Optional[list] = None,
-		output_path: str = "final_explanation_video.mp4",
+		output_path: str = "slideshow_video.mp4",
+		image_paths: Optional[List[str]] = None,
 		width: Optional[int] = None,
 		height: Optional[int] = None,
 		fps: Optional[int] = None,
 		seconds_per_slide: float = 7.0,
 		style: Optional[dict] = None,
+		topic: str = ""
 	) -> str:
-		"""Generate a slide-based explainer video from a structured script with optional images.
-
-		If MoviePy is unavailable, attempt to import it now and raise a helpful error if that fails.
 		"""
-		# use config defaults
-		width = width or self.config.DEFAULT_VIDEO_WIDTH
-		height = height or self.config.DEFAULT_VIDEO_HEIGHT
-		fps = fps or self.config.DEFAULT_FPS
-		# parse slides
-		slides = self._parse_explainer_script(script)
-		if not slides:
-			raise ValueError("No slides detected in script. Ensure headings start with '###'.")
-		# load images
-		loaded_images = []
-		if image_paths:
-			for p in image_paths:
+		Generate a slideshow video from markdown script with enhanced features
+		"""
+		try:
+			# Parse script into slides
+			slides = self._parse_markdown_script(script)
+			
+			if not slides:
+				raise ValueError("No slides found in script")
+			
+			# Set default dimensions
+			width = width or 1280
+			height = height or 720
+			fps = fps or 30
+			
+			# Determine topic category for dynamic backgrounds
+			topic_category = "default"
+			if topic:
 				try:
-					img = cv2.imread(p)
-					if img is None:
-						loaded_images.append(None)
-					else:
-						loaded_images.append(self._resize_and_crop(img, width, height))
-				except Exception:
-					loaded_images.append(None)
-		else:
-			# Prefer local default background 'testbg.jpeg' if available
-			try:
-				proj_dir = os.path.dirname(os.path.abspath(__file__))
-				default_bg = os.path.join(proj_dir, "testbg.jpeg")
-				if os.path.exists(default_bg):
-					img = cv2.imread(default_bg)
-					if img is not None:
-						loaded_images.append(self._resize_and_crop(img, width, height))
-			except Exception:
-				pass
-		# build per-slide videos and merge audio with ffmpeg if MoviePy not present
-		temp_silent_videos = []
-		temp_audios = []
-		temp_av_videos = []
-		
-		# Extract topic from first slide title for background selection
-		topic = ""
-		if slides and slides[0].get("title"):
-			topic = slides[0]["title"].split(":")[-1].strip() if ":" in slides[0]["title"] else slides[0]["title"]
-		
-		for idx, slide in enumerate(slides):
-			# audio - use enhanced content flow
-			audio_text = self._compose_slide_tts_text(slide)
-			# Remove slide numbering to avoid repetition
-			audio_path = self.text_to_speech(audio_text)
-			temp_audios.append(audio_path)
-			# approximate duration using mutagen if available
-			audio_duration = None
-			if MUTAGEN_AVAILABLE:
-				try:
-					meta = MP3(audio_path)
-					audio_duration = float(max(0.1, meta.info.length))
-				except Exception:
-					pass
-			duration = max(seconds_per_slide, audio_duration or seconds_per_slide)
-			# video frames
+					from ai_service import AIService
+					ai_service = AIService()
+					topic_category = ai_service._categorize_topic(topic)
+				except:
+					# Fallback categorization
+					if any(word in topic.lower() for word in ['ai', 'machine learning', 'neural', 'algorithm', 'programming', 'software', 'computer', 'data', 'technology']):
+						topic_category = 'technology'
+					elif any(word in topic.lower() for word in ['physics', 'chemistry', 'biology', 'science', 'research', 'experiment']):
+						topic_category = 'science'
+					elif any(word in topic.lower() for word in ['business', 'marketing', 'finance', 'management', 'strategy']):
+						topic_category = 'business'
+					elif any(word in topic.lower() for word in ['education', 'learning', 'teaching', 'school', 'university']):
+						topic_category = 'education'
+					elif any(word in topic.lower() for word in ['health', 'medical', 'medicine', 'doctor', 'patient']):
+						topic_category = 'health'
+					elif any(word in topic.lower() for word in ['art', 'music', 'design', 'creative', 'painting']):
+						topic_category = 'arts'
+					elif any(word in topic.lower() for word in ['nature', 'environment', 'ecology', 'plants', 'animals']):
+						topic_category = 'nature'
+					elif any(word in topic.lower() for word in ['space', 'astronomy', 'cosmos', 'galaxy', 'planet']):
+						topic_category = 'space'
+			
+			# Generate audio for each slide with detailed content
+			audio_segments = []
+			total_duration = 0
+			
+			for i, slide in enumerate(slides):
+				# Create enhanced slide content with detailed explanations for each subtopic
+				slide_content = self._create_enhanced_slide_content(slide)
+				
+				# Generate audio for this slide
+				audio_path = self.text_to_speech(slide_content)
+				
+				# Get audio duration
+				audio_duration = self._get_audio_duration(audio_path)
+				
+				# Ensure minimum duration of 20 seconds per slide for detailed explanations
+				if audio_duration < 20.0:
+					audio_duration = 20.0
+				
+				audio_segments.append({
+					'path': audio_path,
+					'duration': audio_duration,
+					'start_time': total_duration
+				})
+				
+				total_duration += audio_duration
+			
+			# Create video frames
 			temp_video = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
 			temp_video_path = temp_video.name
 			temp_video.close()
+			
 			fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-			writer = cv2.VideoWriter(temp_video_path, fourcc, fps, (width, height))
-			frames = int(duration * fps)
-			bg_img = None
-			if loaded_images:
-				bg_img = loaded_images[idx % len(loaded_images)] if loaded_images[idx % len(loaded_images)] is not None else None
-			for f in range(frames):
-				t = f / float(fps)
-				if bg_img is not None:
-					frame = self._ken_burns_frame(bg_img, width, height, t, duration)
-				elif self.default_background is not None:
-					frame = self._ken_burns_frame(self.default_background, width, height, t, duration)
-				else:
-					frame = np.zeros((height, width, 3), dtype=np.uint8)
-					frame[:] = (20, 30, 45)
-				frame = self._draw_slide_text_styled(frame, slide.get("title", ""), slide.get("bullets", []), style)
-				if t < 1.0:
-					alpha = max(0.0, min(1.0, t / 1.0))
-					frame = (frame.astype(np.float32) * alpha).astype(np.uint8)
-				writer.write(frame)
-			writer.release()
-			temp_silent_videos.append(temp_video_path)
-			# merge audio + video via ffmpeg
+			video_writer = cv2.VideoWriter(temp_video_path, fourcc, fps, (width, height))
+			
+			# Generate frames for each slide with proper duration
+			current_time = 0
+			
+			for slide_index, slide in enumerate(slides):
+				# Use the actual audio duration for this slide
+				slide_duration = audio_segments[slide_index]['duration']
+				frames_for_slide = int(slide_duration * fps)
+				
+				# Get different background for each slide
+				bg_img = self._get_notebooklm_background(topic_category, slide_index)
+				bg_img = self._resize_and_crop(bg_img, width, height)
+				
+				# Generate frames for this slide
+				for frame_index in range(frames_for_slide):
+					frame = bg_img.copy()
+					
+					# Add text overlay with subtopics and detailed narration
+					frame = self._draw_slide_text_styled(
+						frame,
+						slide.get('title', ''),
+						slide.get('bullets', []),
+						style,
+						subtopics=slide.get('subtopics', []),
+						narration=slide.get('narration', ''),
+						topic_category=topic_category
+					)
+					
+					video_writer.write(frame)
+					current_time += 1/fps
+			
+			video_writer.release()
+			
+			# Combine audio segments
+			if len(audio_segments) > 1:
+				combined_audio = self._combine_audio_segments(audio_segments)
+			else:
+				combined_audio = audio_segments[0]['path']
+			
+			# Merge video and audio
 			if IMAGEIO_FFMPEG_AVAILABLE:
 				ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
-				av_out = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-				av_out_path = av_out.name
-				av_out.close()
 				cmd = [
 					ffmpeg_exe, "-y",
 					"-i", temp_video_path,
-					"-i", audio_path,
+					"-i", combined_audio,
 					"-c:v", "libx264",
 					"-preset", "veryfast",
 					"-c:a", "aac",
 					"-shortest",
-					av_out_path,
+					output_path,
 				]
 				subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-				temp_av_videos.append(av_out_path)
+				
+				# Cleanup
+				try:
+					os.unlink(temp_video_path)
+					for segment in audio_segments:
+						os.unlink(segment['path'])
+					if len(audio_segments) > 1:
+						os.unlink(combined_audio)
+				except:
+					pass
+				
+				return output_path
 			else:
-				raise RuntimeError("FFmpeg (imageio-ffmpeg) not available for slideshow generation.")
-		# concatenate all av clips
-		ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
-		list_file = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
-		list_path = list_file.name
-		list_file.close()
-		with open(list_path, "w") as f:
-			for p in temp_av_videos:
-				f.write(f"file '{p}'\n")
-		concat_cmd = [
-			ffmpeg_exe, "-y",
-			"-f", "concat", "-safe", "0",
-			"-i", list_path,
-			"-c:v", "libx264",
-			"-c:a", "aac",
-			"-movflags", "+faststart",
-			output_path,
-		]
-		subprocess.run(concat_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-		# cleanup temps
-		for p in temp_silent_videos + temp_audios + temp_av_videos:
-			try:
-				if os.path.exists(p):
-					os.unlink(p)
-			except Exception:
-				pass
-		try:
-			os.unlink(list_path)
-		except Exception:
-			pass
-		logger.info(f"Slideshow video generated: {output_path}")
-		return output_path
-	
+				return temp_video_path
+				
+		except Exception as e:
+			logger.error(f"Video generation failed: {e}")
+			raise
+
 	def cleanup_temp_files(self, file_paths: list):
 		"""Clean up temporary files"""
 		for file_path in file_paths:
@@ -1214,3 +1340,346 @@ class VideoGenerator:
 					logger.info(f"Cleaned up temporary file: {file_path}")
 			except Exception as e:
 				logger.warning(f"Failed to cleanup file {file_path}: {e}") 
+
+	def _create_notebooklm_backgrounds(self) -> Dict[str, np.ndarray]:
+		"""Create a dictionary of pre-generated gradient backgrounds for different topic categories"""
+		backgrounds = {}
+		
+		# Define gradient combinations for different categories
+		gradient_configs = {
+			'default': [
+				((41, 128, 185), (142, 68, 173)),  # Blue to Purple
+				((52, 152, 219), (155, 89, 182)),  # Light Blue to Light Purple
+				((44, 62, 80), (52, 73, 94))       # Dark Blue to Darker Blue
+			],
+			'technology': [
+				((41, 128, 185), (142, 68, 173)),  # Blue to Purple
+				((52, 152, 219), (155, 89, 182)),  # Light Blue to Light Purple
+				((44, 62, 80), (52, 73, 94)),      # Dark Blue to Darker Blue
+				((26, 188, 156), (46, 204, 113)),  # Teal to Green
+				((52, 73, 94), (44, 62, 80))       # Dark Gray to Darker Gray
+			],
+			'science': [
+				((231, 76, 60), (192, 57, 43)),    # Red to Dark Red
+				((230, 126, 34), (211, 84, 0)),    # Orange to Dark Orange
+				((241, 196, 15), (243, 156, 18)),  # Yellow to Orange
+				((46, 204, 113), (39, 174, 96)),   # Green to Dark Green
+				((155, 89, 182), (142, 68, 173))   # Purple to Dark Purple
+			],
+			'business': [
+				((52, 73, 94), (44, 62, 80)),      # Dark Gray to Darker Gray
+				((149, 165, 166), (127, 140, 141)), # Light Gray to Gray
+				((41, 128, 185), (52, 73, 94)),    # Blue to Dark Gray
+				((26, 188, 156), (22, 160, 133)),  # Teal to Dark Teal
+				((155, 89, 182), (142, 68, 173))   # Purple to Dark Purple
+			],
+			'education': [
+				((52, 152, 219), (41, 128, 185)),  # Light Blue to Blue
+				((46, 204, 113), (39, 174, 96)),   # Green to Dark Green
+				((241, 196, 15), (243, 156, 18)),  # Yellow to Orange
+				((230, 126, 34), (211, 84, 0)),    # Orange to Dark Orange
+				((155, 89, 182), (142, 68, 173))   # Purple to Dark Purple
+			],
+			'health': [
+				((231, 76, 60), (192, 57, 43)),    # Red to Dark Red
+				((46, 204, 113), (39, 174, 96)),   # Green to Dark Green
+				((52, 152, 219), (41, 128, 185)),  # Blue to Dark Blue
+				((241, 196, 15), (243, 156, 18)),  # Yellow to Orange
+				((155, 89, 182), (142, 68, 173))   # Purple to Dark Purple
+			],
+			'arts': [
+				((231, 76, 60), (192, 57, 43)),    # Red to Dark Red
+				((155, 89, 182), (142, 68, 173)),  # Purple to Dark Purple
+				((241, 196, 15), (243, 156, 18)),  # Yellow to Orange
+				((46, 204, 113), (39, 174, 96)),   # Green to Dark Green
+				((230, 126, 34), (211, 84, 0))     # Orange to Dark Orange
+			],
+			'nature': [
+				((46, 204, 113), (39, 174, 96)),   # Green to Dark Green
+				((26, 188, 156), (22, 160, 133)),  # Teal to Dark Teal
+				((52, 152, 219), (41, 128, 185)),  # Blue to Dark Blue
+				((241, 196, 15), (243, 156, 18)),  # Yellow to Orange
+				((230, 126, 34), (211, 84, 0))     # Orange to Dark Orange
+			],
+			'space': [
+				((44, 62, 80), (52, 73, 94)),      # Dark Blue to Darker Blue
+				((142, 68, 173), (155, 89, 182)),  # Dark Purple to Purple
+				((41, 128, 185), (52, 152, 219)),  # Blue to Light Blue
+				((52, 73, 94), (44, 62, 80)),      # Dark Gray to Darker Gray
+				((155, 89, 182), (142, 68, 173))   # Purple to Dark Purple
+			]
+		}
+		
+		# Create backgrounds for each category
+		for category, configs in gradient_configs.items():
+			backgrounds[category] = []
+			for i, (start_color, end_color) in enumerate(configs):
+				# Create different gradient directions for variety
+				directions = ['vertical', 'horizontal', 'diagonal', 'radial']
+				direction = directions[i % len(directions)]
+				
+				background = self._create_gradient_background(
+					1920, 1080, start_color, end_color, direction
+				)
+				backgrounds[category].append(background)
+		
+		return backgrounds
+	
+	def _create_gradient_background(self, width: int, height: int, start_color: tuple, end_color: tuple, direction: str) -> np.ndarray:
+		"""Create a gradient background with specified colors and direction"""
+		background = np.zeros((height, width, 3), dtype=np.uint8)
+		
+		if direction == 'vertical':
+			for y in range(height):
+				ratio = y / height
+				color = tuple(int(start_color[i] + (end_color[i] - start_color[i]) * ratio) for i in range(3))
+				background[y, :] = color
+		
+		elif direction == 'horizontal':
+			for x in range(width):
+				ratio = x / width
+				color = tuple(int(start_color[i] + (end_color[i] - start_color[i]) * ratio) for i in range(3))
+				background[:, x] = color
+		
+		elif direction == 'diagonal':
+			for y in range(height):
+				for x in range(width):
+					ratio = (x + y) / (width + height)
+					color = tuple(int(start_color[i] + (end_color[i] - start_color[i]) * ratio) for i in range(3))
+					background[y, x] = color
+		
+		elif direction == 'radial':
+			center_x, center_y = width // 2, height // 2
+			max_distance = ((width // 2) ** 2 + (height // 2) ** 2) ** 0.5
+			
+			for y in range(height):
+				for x in range(width):
+					distance = ((x - center_x) ** 2 + (y - center_y) ** 2) ** 0.5
+					ratio = distance / max_distance
+					color = tuple(int(start_color[i] + (end_color[i] - start_color[i]) * ratio) for i in range(3))
+					background[y, x] = color
+		
+		return background
+
+	def _get_notebooklm_background(self, topic_category: str = 'default', slide_index: int = 0) -> np.ndarray:
+		"""Get a NotebookLM-style background based on topic category and slide index"""
+		if topic_category not in self.notebooklm_backgrounds:
+			topic_category = 'default'
+		
+		backgrounds = self.notebooklm_backgrounds[topic_category]
+		# Use slide_index to get different background for each slide
+		background_index = slide_index % len(backgrounds)
+		return backgrounds[background_index].copy()
+
+	def generate_quick_video(
+		self,
+		topic: str,
+		output_path: str = "quick_explanation.mp4",
+		duration: int = 10,
+		width: int = 1280,
+		height: int = 720,
+		fps: int = 30
+	) -> str:
+		"""
+		Generate a quick video with optimized content and extended slide durations
+		"""
+		try:
+			# Generate content using free method
+			from ai_service import AIService
+			ai_service = AIService()
+			
+			# Use free content generation
+			structured_data = ai_service.generate_explainer_structured_free(
+				topic=topic,
+				level="beginner",
+				num_slides=3,  # Fewer slides for quick video
+				max_retries=1
+			)
+			
+			# Convert to script format
+			script_lines = []
+			for slide in structured_data.get('slides', []):
+				script_lines.append(f"### {slide.get('title', 'Untitled')}")
+				for bullet in slide.get('bullets', []):
+					script_lines.append(f"- {bullet}")
+				script_lines.append("")
+			
+			script = "\n".join(script_lines)
+			
+			# Generate video with extended slide durations for detailed audio
+			video_path = self.generate_slideshow_video(
+				script=script,
+				output_path=output_path,
+				seconds_per_slide=22.0,  # 22 seconds per slide for detailed explanations
+				width=width,
+				height=height,
+				fps=fps,
+				topic=topic
+			)
+			
+			return video_path
+			
+		except Exception as e:
+			logger.error(f"Quick video generation failed: {e}")
+			# Fallback to simple video
+			return self._generate_fallback_video(topic, output_path, duration, width, height, fps)
+	
+	def _generate_fallback_video(self, topic: str, output_path: str, duration: int, width: int, height: int, fps: int) -> str:
+		"""Generate a simple fallback video when content generation fails"""
+		try:
+			# Create simple content with detailed narration
+			content = f"""
+### Introduction to {topic}
+- {topic} is an important concept
+- It has many practical applications
+- Understanding it provides valuable insights
+
+### Key Points
+- Core principles guide understanding
+- Real-world examples demonstrate value
+- Future applications show great promise
+
+### Summary
+- {topic} offers significant benefits
+- Continued learning enhances knowledge
+- Practical application improves skills
+"""
+			
+			# Generate detailed audio that explains each subtopic
+			audio_text = f"Let me explain {topic} in detail. {topic} is an important concept that has transformed how we approach modern problems. It combines various disciplines to create powerful solutions used across multiple industries. The core principles guide our understanding and help us make informed decisions. Real-world examples demonstrate the practical value of this concept, showing how it can be applied to solve complex problems. Future applications show great promise, with continuous innovation driving new developments. {topic} offers significant benefits for continued learning and practical application, making it essential knowledge for anyone in this field."
+			audio_path = self.text_to_speech(audio_text)
+			
+			# Create video frames
+			temp_video = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+			temp_video_path = temp_video.name
+			temp_video.close()
+			
+			fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+			video_writer = cv2.VideoWriter(temp_video_path, fourcc, fps, (width, height))
+			
+			total_frames = int(duration * fps)
+			
+			for frame_index in range(total_frames):
+				t = frame_index / float(fps)
+				
+				# Get background
+				topic_category = "default"
+				if any(word in topic.lower() for word in ['ai', 'machine learning', 'neural', 'algorithm', 'programming', 'software', 'computer', 'data', 'technology']):
+					topic_category = 'technology'
+				elif any(word in topic.lower() for word in ['physics', 'chemistry', 'biology', 'science', 'research', 'experiment']):
+					topic_category = 'science'
+				
+				background = self._get_notebooklm_background(topic_category)
+				frame = self._resize_and_crop(background, width, height)
+				
+				# Add text overlay with subtopics
+				frame = self._draw_clean_slide_text(
+					frame, 
+					f"Introduction to {topic}", 
+					[f"{topic} is an important concept", "It has many practical applications", "Understanding it provides valuable insights"],
+					topic=topic,
+					subtopics=['Core Concepts', 'Key Components', 'Applications'],
+					narration=f"Let me explain the core concepts of {topic}. This represents a fundamental shift in how we approach modern problems. The core concepts include understanding the basic principles that make this work. These principles form the foundation for all applications. Next, let me cover the key components. The key components are the essential building blocks that make this functional. Each component has a specific role and works together with others to create a complete system. Finally, let me discuss the applications. The applications are vast and diverse, spanning multiple industries from healthcare to finance. This is used to solve complex problems and improve efficiency across various sectors.",
+					topic_category=topic_category
+				)
+				
+				video_writer.write(frame)
+			
+			video_writer.release()
+			
+			# Add audio
+			if IMAGEIO_FFMPEG_AVAILABLE:
+				ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+				cmd = [
+					ffmpeg_exe, "-y",
+					"-i", temp_video_path,
+					"-i", audio_path,
+					"-c:v", "libx264",
+					"-preset", "veryfast",
+					"-c:a", "aac",
+					"-shortest",
+					output_path,
+				]
+				subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+				
+				# Cleanup
+				try:
+					os.unlink(temp_video_path)
+					os.unlink(audio_path)
+				except:
+					pass
+				
+				return output_path
+			else:
+				return temp_video_path
+				
+		except Exception as e:
+			logger.error(f"Fallback video generation failed: {e}")
+			raise 
+
+	def _get_audio_duration(self, audio_path: str) -> float:
+		"""Get the duration of an audio file in seconds"""
+		try:
+			# Try using MoviePy first
+			if MOVIEPY_AVAILABLE:
+				audio_clip = AudioFileClip(audio_path)
+				duration = float(max(0.1, audio_clip.duration))
+				audio_clip.close()
+				return duration
+			
+			# Try using mutagen as fallback
+			elif MUTAGEN_AVAILABLE:
+				meta = MP3(audio_path)
+				duration = float(max(0.1, meta.info.length))
+				return duration
+			
+			# Fallback: estimate based on file size and content
+			else:
+				# Estimate duration based on file size (rough approximation)
+				file_size = os.path.getsize(audio_path)
+				# Assume ~16kbps for MP3
+				estimated_duration = file_size / (16 * 1024 / 8)
+				return max(20.0, estimated_duration)
+				
+		except Exception as e:
+			logger.warning(f"Could not determine audio duration for {audio_path}: {e}")
+			# Return default duration
+			return 20.0
+
+	def _combine_audio_segments(self, audio_segments: List[Dict]) -> str:
+		"""Combine audio segments into a single audio file"""
+		try:
+			if MOVIEPY_AVAILABLE:
+				from moviepy.editor import concatenate_audioclips, AudioFileClip
+				
+				audio_clips = []
+				for segment in audio_segments:
+					audio_path = segment['path']
+					audio_clip = AudioFileClip(audio_path)
+					audio_clips.append(audio_clip)
+				
+				# Concatenate audio clips
+				combined_audio = concatenate_audioclips(audio_clips)
+				
+				# Save combined audio to a temporary file
+				temp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+				temp_audio_path = temp_audio.name
+				temp_audio.close()
+				
+				combined_audio.write_audiofile(temp_audio_path)
+				combined_audio.close()
+				
+				# Close individual clips
+				for clip in audio_clips:
+					clip.close()
+				
+				return temp_audio_path
+			else:
+				# If MoviePy is not available, just return the first audio file
+				# This is a simple fallback
+				return audio_segments[0]['path']
+				
+		except Exception as e:
+			logger.warning(f"Could not combine audio segments: {e}")
+			# Return the first audio file as fallback
+			return audio_segments[0]['path']

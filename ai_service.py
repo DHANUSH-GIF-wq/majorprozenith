@@ -3,6 +3,7 @@ import logging
 from typing import Optional, Dict, Any, List
 import requests
 from config import Config
+import os
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -179,36 +180,38 @@ Do NOT include code fences or markdown outside the specified format.
         self,
         topic: str,
         level: str = "beginner",
-        num_slides: int = 6,
+        num_slides: int = 8,
         avoid_text: Optional[str] = None,
         max_retries: int = 3,
     ) -> Dict[str, Any]:
         """
-        Generate a high-quality explainer with structured slides in NotebookLM style:
-        [{ title, bullets[], narration, examples[], visual_prompts[] }]
+        Generate a high-quality explainer with structured slides in Google NotebookLM style:
+        [{ title, subtopics[], bullets[], narration, examples[], visual_prompts[] }]
         """
         constraints = (
             f"Avoid repeating the following text and produce novel explanations: {avoid_text[:800]}"
             if avoid_text else ""
         )
         
-        # Adapt slide count based on topic complexity
+        # Analyze topic for dynamic content adaptation
         topic_words = len(topic.split())
+        topic_category = self._categorize_topic(topic)
+        
         if topic_words <= 3:
-            # Simple topic - fewer slides, more focused
-            num_slides = min(4, num_slides)
-            focus_instruction = "Keep explanations very simple and focused. Use concrete examples."
-        elif topic_words <= 6:
-            # Medium topic - balanced approach
-            num_slides = min(5, num_slides)
-            focus_instruction = "Provide clear, step-by-step explanations with practical examples."
-        else:
-            # Complex topic - more comprehensive
+            # Simple topic - focused presentation
             num_slides = min(6, num_slides)
-            focus_instruction = "Break down complex concepts into digestible parts with clear examples."
+            focus_instruction = f"Create a clear, step-by-step explanation of {topic} with practical examples and real-world applications."
+        elif topic_words <= 6:
+            # Medium topic - comprehensive coverage
+            num_slides = min(8, num_slides)
+            focus_instruction = f"Provide comprehensive coverage of {topic} with clear subtopics, detailed explanations, and multiple examples."
+        else:
+            # Complex topic - thorough breakdown
+            num_slides = min(10, num_slides)
+            focus_instruction = f"Break down {topic} into logical sections with detailed explanations and comprehensive examples."
         
         prompt = f"""
-You are a master educator like NotebookLM. Create a clear, focused explainer for the topic: "{topic}".
+You are a master educator creating a Google NotebookLM-style presentation for: "{topic}".
 Audience level: {level}. Target {num_slides} slides.
 
 CRITICAL STYLE RULES - NEVER VIOLATE:
@@ -221,19 +224,38 @@ CRITICAL STYLE RULES - NEVER VIOLATE:
 - Avoid jargon and complex terminology
 - Write like explaining to a friend
 
-Each slide must include:
-- title: short, clear statement (max 6 words, no questions)
-- bullets: 2-3 key points only (max 5 words each, simple statements)
-- narration: 40-80 words of flowing explanation that TEACHES the concept clearly
-- examples: 1 simple, concrete example that makes the concept clear
-- visual_prompts: 1 short prompt describing a simple visual/diagram
+NOTEBOOKLM-STYLE PRESENTATION REQUIREMENTS:
+- Create clean, minimal, focused slides
+- Each slide should have clear subtopics and detailed content
+- Include proper introduction, main content sections, and conclusion
+- Use professional presentation formatting
+- Focus on one main concept per slide
+- Use concrete examples and real-world applications
 
-Content Guidelines:
+CONTENT REQUIREMENTS:
 - {focus_instruction}
-- Start with what the topic IS, not what it isn't
-- Use positive, clear language
-- Provide practical, real-world context
-- End with a clear takeaway or summary
+- Start with a clear title slide and agenda
+- Break down the topic into logical subtopics
+- Provide detailed explanations for each concept
+- Include multiple examples and real-world applications
+- Use professional language and clear structure
+- End with a comprehensive summary and key takeaways
+
+Each slide must include:
+- title: clean, focused slide title (max 6 words, no questions)
+- subtopics: 2-3 main subtopics for this slide (max 5 words each)
+- bullets: 3-4 detailed bullet points explaining the subtopics (max 7 words each)
+- narration: 60-100 words of flowing explanation that teaches the concept clearly
+- examples: 1-2 concrete examples that illustrate the concepts clearly
+- visual_prompts: 1-2 prompts describing clean, minimal visuals for this slide
+
+SLIDE TYPES TO INCLUDE:
+1. Title Slide: Topic, clean introduction
+2. Overview: What will be covered
+3. Introduction: What the topic is and why it matters
+4. Main Content Slides: Detailed explanations with subtopics
+5. Examples/Applications: Real-world usage
+6. Summary: Key takeaways and next steps
 
 {constraints}
 
@@ -242,7 +264,14 @@ Return ONLY valid JSON with this exact shape:
   "topic": "...",
   "level": "...",
   "slides": [
-    {{"title": "...", "bullets": ["..."], "narration": "...", "examples": ["..."], "visual_prompts": ["..."]}}
+    {{
+      "title": "...",
+      "subtopics": ["..."],
+      "bullets": ["..."],
+      "narration": "...",
+      "examples": ["..."],
+      "visual_prompts": ["..."]
+    }}
   ]
 }}
 Do not include markdown fences or any text outside JSON.
@@ -296,6 +325,10 @@ Do not include markdown fences or any text outside JSON.
                 if "title" in slide:
                     slide["title"] = self._clean_text(slide["title"])
                 
+                # Clean subtopics
+                if "subtopics" in slide:
+                    slide["subtopics"] = [self._clean_text(subtopic) for subtopic in slide["subtopics"]]
+                
                 # Clean bullets
                 if "bullets" in slide:
                     slide["bullets"] = [self._clean_text(bullet) for bullet in slide["bullets"]]
@@ -319,6 +352,11 @@ Do not include markdown fences or any text outside JSON.
         text = text.replace("?", ".")
         text = text.replace("??", ".")
         text = text.replace("???", ".")
+        text = text.replace("????", ".")
+        text = text.replace("?????", ".")
+        
+        # Remove any remaining question marks
+        text = text.replace("?", "")
         
         # Convert questions to statements - MORE AGGRESSIVE
         question_starters = [
@@ -327,51 +365,267 @@ Do not include markdown fences or any text outside JSON.
             "What", "How", "Why", "When", "Where", "Which"
         ]
         
-        for starter in question_starters:
-            if text.startswith(starter):
-                # Convert question to statement
-                if starter == "What is":
-                    text = text.replace("What is", "This is", 1)
-                elif starter == "How does":
-                    text = text.replace("How does", "This works by", 1)
-                elif starter == "Why do":
-                    text = text.replace("Why do", "This happens because", 1)
-                elif starter == "When do":
-                    text = text.replace("When do", "This occurs when", 1)
-                elif starter == "Where do":
-                    text = text.replace("Where do", "This happens in", 1)
-                elif starter == "Which is":
-                    text = text.replace("Which is", "This is", 1)
-                elif starter == "What are":
-                    text = text.replace("What are", "These are", 1)
-                elif starter == "How are":
-                    text = text.replace("How are", "These work by", 1)
-                elif starter == "Why are":
-                    text = text.replace("Why are", "These exist because", 1)
-                elif starter == "When are":
-                    text = text.replace("When are", "These occur when", 1)
-                elif starter == "Where are":
-                    text = text.replace("Where are", "These exist in", 1)
-                elif starter == "Which are":
-                    text = text.replace("Which are", "These are", 1)
-                elif starter == "What":
-                    text = text.replace("What", "This", 1)
-                elif starter == "How":
-                    text = text.replace("How", "This works by", 1)
-                elif starter == "Why":
-                    text = text.replace("Why", "This happens because", 1)
-                elif starter == "When":
-                    text = text.replace("When", "This occurs when", 1)
-                elif starter == "Where":
-                    text = text.replace("Where", "This happens in", 1)
-                elif starter == "Which":
-                    text = text.replace("Which", "This", 1)
+        # Split into sentences and process each
+        sentences = text.split('.')
+        cleaned_sentences = []
+        
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+                
+            # Check if sentence starts with a question starter
+            for starter in question_starters:
+                if sentence.lower().startswith(starter.lower()):
+                    # Convert question to statement
+                    if starter.lower() == "what is":
+                        sentence = sentence.replace(starter, "This is", 1)
+                    elif starter.lower() == "how does":
+                        sentence = sentence.replace(starter, "This works by", 1)
+                    elif starter.lower() == "why do":
+                        sentence = sentence.replace(starter, "This happens because", 1)
+                    elif starter.lower() == "when do":
+                        sentence = sentence.replace(starter, "This occurs when", 1)
+                    elif starter.lower() == "where do":
+                        sentence = sentence.replace(starter, "This happens in", 1)
+                    elif starter.lower() == "which is":
+                        sentence = sentence.replace(starter, "This is", 1)
+                    elif starter.lower() == "what are":
+                        sentence = sentence.replace(starter, "These are", 1)
+                    elif starter.lower() == "how are":
+                        sentence = sentence.replace(starter, "These work by", 1)
+                    elif starter.lower() == "why are":
+                        sentence = sentence.replace(starter, "These exist because", 1)
+                    elif starter.lower() == "when are":
+                        sentence = sentence.replace(starter, "These occur when", 1)
+                    elif starter.lower() == "where are":
+                        sentence = sentence.replace(starter, "These exist in", 1)
+                    elif starter.lower() == "which are":
+                        sentence = sentence.replace(starter, "These are", 1)
+                    elif starter.lower() == "what":
+                        sentence = sentence.replace(starter, "This", 1)
+                    elif starter.lower() == "how":
+                        sentence = sentence.replace(starter, "This works by", 1)
+                    elif starter.lower() == "why":
+                        sentence = sentence.replace(starter, "This happens because", 1)
+                    elif starter.lower() == "when":
+                        sentence = sentence.replace(starter, "This occurs when", 1)
+                    elif starter.lower() == "where":
+                        sentence = sentence.replace(starter, "This happens in", 1)
+                    elif starter.lower() == "which":
+                        sentence = sentence.replace(starter, "This", 1)
+                    break
+            
+            cleaned_sentences.append(sentence)
+        
+        # Join sentences back together
+        text = ". ".join(cleaned_sentences)
         
         # Ensure proper sentence ending
         if text and not text.endswith(('.', '!', ':')):
             text = text + '.'
         
         return text
+
+    def generate_explainer_structured_free(
+        self,
+        topic: str,
+        level: str = "beginner",
+        num_slides: int = 6,
+        avoid_text: Optional[str] = None,
+        max_retries: int = 3,
+    ) -> Dict[str, Any]:
+        """
+        Generate structured content using free alternatives (no API key required)
+        """
+        try:
+            # Try OpenAI API first (if available)
+            if self._try_openai_generation(topic, level, num_slides, avoid_text):
+                return self._try_openai_generation(topic, level, num_slides, avoid_text)
+            
+            # Fallback to local template-based generation
+            return self._generate_local_content(topic, level, num_slides)
+            
+        except Exception as e:
+            logger.error(f"Free content generation failed: {e}")
+            # Ultimate fallback
+            return self._build_placeholder_structured(topic, level)
+    
+    def _try_openai_generation(self, topic: str, level: str, num_slides: int, avoid_text: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Try OpenAI API for content generation (free tier available)"""
+        try:
+            import openai
+            
+            # Check if OpenAI API key is available
+            api_key = os.getenv('OPENAI_API_KEY')
+            if not api_key:
+                return None
+            
+            openai.api_key = api_key
+            
+            prompt = f"""
+Create a Google NotebookLM-style presentation for: "{topic}"
+Audience level: {level}. Target {num_slides} slides.
+
+CRITICAL: NEVER use question marks (?) anywhere. Write ONLY declarative statements.
+
+Each slide must include:
+- title: clean, focused slide title (max 6 words, no questions)
+- subtopics: 2-3 main subtopics for this slide (max 5 words each)
+- bullets: 3-4 detailed bullet points explaining the subtopics (max 7 words each)
+- narration: 60-100 words of flowing explanation that teaches the concept clearly
+- examples: 1-2 concrete examples that illustrate the concepts clearly
+- visual_prompts: 1-2 prompts describing clean, minimal visuals for this slide
+
+Return ONLY valid JSON with this exact shape:
+{{
+  "topic": "...",
+  "level": "...",
+  "slides": [
+    {{
+      "title": "...",
+      "subtopics": ["..."],
+      "bullets": ["..."],
+      "narration": "...",
+      "examples": ["..."],
+      "visual_prompts": ["..."]
+    }}
+  ]
+}}
+"""
+            
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "You are a master educator creating professional presentations."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=2000,
+                temperature=0.7
+            )
+            
+            content = response.choices[0].message.content
+            import json
+            data = json.loads(content)
+            
+            # Clean the content
+            data = self._clean_content_data(data)
+            return data
+            
+        except Exception as e:
+            logger.warning(f"OpenAI generation failed: {e}")
+            return None
+    
+    def _generate_local_content(self, topic: str, level: str, num_slides: int) -> Dict[str, Any]:
+        """Generate content using local templates (no API required)"""
+        
+        # Template-based content generation with detailed subtopic explanations
+        templates = {
+            'technology': {
+                'slides': [
+                    {
+                        'title': f'Introduction to {topic}',
+                        'subtopics': ['Core Concepts', 'Key Components', 'Applications'],
+                        'bullets': [
+                            f'{topic} represents modern technological advancement',
+                            'It combines multiple technical disciplines',
+                            'Used across various industries and applications',
+                            'Continuously evolving with new developments'
+                        ],
+                        'narration': f'Let me explain the core concepts of {topic} in detail. The core concepts form the fundamental foundation that makes this technology work. These concepts include understanding the basic principles, algorithms, and methodologies that drive the entire system. The core concepts are essential because they guide all decision-making processes and implementation strategies. Understanding these core concepts is crucial for anyone working with this technology, as they provide the theoretical framework that supports all practical applications. These concepts have been developed through years of research and experimentation, and they continue to evolve as new discoveries are made. Next, let me explain the key components in detail. The key components are the essential building blocks that make this technology functional and effective. Each component has a specific role and responsibility within the overall system architecture. These components work together in harmony to create a complete and robust solution. Understanding each component individually helps us appreciate how they contribute to the overall functionality. The components are designed to be modular, allowing for easy maintenance, updates, and scalability. Finally, let me explain the applications in detail. The applications of {topic} are vast and diverse, spanning multiple industries from healthcare to finance, from education to entertainment. This technology is used to solve complex problems that were previously impossible to address. The applications demonstrate the practical value and real-world impact of this technology. Each application showcases different aspects of the technology\'s capabilities and potential.',
+                        'examples': [f'Companies use {topic} for automation', f'{topic} powers modern applications'],
+                        'visual_prompts': ['Clean technology diagram', 'Modern interface design']
+                    },
+                    {
+                        'title': 'Core Principles',
+                        'subtopics': ['Fundamentals', 'Best Practices', 'Implementation'],
+                        'bullets': [
+                            'Understanding the basic principles is essential',
+                            'Follow established best practices for success',
+                            'Proper implementation ensures optimal results',
+                            'Regular updates maintain system efficiency'
+                        ],
+                        'narration': f'Now let me explain the fundamentals of {topic} in detail. The fundamentals are the basic principles that everyone working with this technology must thoroughly understand. These principles guide all decision-making processes and provide the framework for successful implementation. Understanding these fundamentals is crucial because they form the foundation upon which all advanced concepts are built. The fundamentals include theoretical knowledge, practical skills, and conceptual understanding that enable effective problem-solving. These principles have been developed through extensive research and real-world testing, ensuring their reliability and effectiveness. Next, let me explain the best practices in detail. Best practices have been developed through years of experience, research, and continuous improvement. These practices ensure that implementations are successful, efficient, and maintainable. Following these best practices reduces errors, improves performance, and enhances user experience. These practices are based on lessons learned from successful projects and common pitfalls to avoid. They provide guidelines for optimal configuration, deployment, and maintenance strategies. Finally, let me explain implementation in detail. Implementation involves putting the principles and best practices into action through careful planning and execution. This requires understanding the specific requirements, constraints, and objectives of each project. Proper implementation ensures that the technology delivers the expected benefits and performs reliably under various conditions. Implementation includes system design, development, testing, deployment, and ongoing maintenance to ensure long-term success.',
+                        'examples': ['Industry standards guide development', 'Successful projects follow proven methods'],
+                        'visual_prompts': ['Principle flowchart', 'Best practice checklist']
+                    },
+                    {
+                        'title': 'Real-World Applications',
+                        'subtopics': ['Industry Use', 'Case Studies', 'Future Trends'],
+                        'bullets': [
+                            'Widely adopted across multiple industries',
+                            'Proven success in various applications',
+                            'Continuous innovation drives new uses',
+                            'Future applications show great promise'
+                        ],
+                        'narration': f'Let me explain the industry use of {topic} in detail. This technology has been widely adopted across multiple industries, demonstrating its versatility, effectiveness, and practical value. Each industry has found unique ways to apply this technology to solve their specific challenges and improve their operations. The adoption rate continues to grow as more organizations recognize the significant benefits and competitive advantages this technology provides. Different industries have different requirements and constraints, and this technology has proven adaptable to meet these diverse needs. The widespread adoption across industries validates the technology\'s effectiveness and reliability. Next, let me explain case studies in detail. Case studies provide real-world examples of successful implementations and demonstrate the practical value of this technology. These examples offer valuable insights into what works well and what challenges might arise during implementation. Case studies serve as learning opportunities for future projects and help organizations understand the potential benefits and risks. They showcase different approaches, methodologies, and outcomes that can inform decision-making processes. Finally, let me explain future trends in detail. The future of {topic} looks extremely promising with continuous innovation driving new applications and capabilities. Emerging trends suggest even more exciting developments ahead, with potential applications we haven\'t even imagined yet. The technology is evolving rapidly, with new features, capabilities, and use cases being discovered regularly. Future trends indicate increased integration, automation, and intelligence that will further enhance the technology\'s value and impact.',
+                        'examples': ['Healthcare applications improve patient care', 'Financial systems enhance security'],
+                        'visual_prompts': ['Industry application map', 'Success metrics chart']
+                    }
+                ]
+            },
+            'science': {
+                'slides': [
+                    {
+                        'title': f'Understanding {topic}',
+                        'subtopics': ['Scientific Basis', 'Key Theories', 'Research Methods'],
+                        'bullets': [
+                            f'{topic} is based on solid scientific principles',
+                            'Research methods ensure accurate results',
+                            'Theoretical frameworks guide understanding',
+                            'Empirical evidence supports conclusions'
+                        ],
+                        'narration': f'Let me explain the scientific basis of {topic} in detail. The scientific basis provides the fundamental foundation for understanding this complex field and its various phenomena. It involves understanding the fundamental laws, principles, and mechanisms that govern this area of study. This scientific basis has been developed through rigorous research, experimentation, and validation processes. Understanding the scientific basis is crucial because it provides the theoretical framework that supports all practical applications and research endeavors. The scientific basis includes fundamental concepts, mathematical models, and theoretical frameworks that explain how and why things work. Next, let me explain the key theories in detail. Key theories in this field provide comprehensive frameworks for understanding complex phenomena and making predictions about future observations. These theories have been extensively tested, validated, and refined through years of research and experimentation. They help us understand relationships between different factors and provide explanations for observed phenomena. These theories serve as the foundation for further research and practical applications. Finally, let me explain research methods in detail. Research methods in this field ensure that conclusions are based on reliable, reproducible evidence and follow rigorous scientific standards. These methods include both experimental and observational approaches, each with their own strengths, limitations, and applications. Understanding these methods is essential for conducting valid research and interpreting results accurately. These methods have been developed and refined over decades of scientific practice.',
+                        'examples': ['Laboratory experiments validate theories', 'Peer-reviewed studies confirm findings'],
+                        'visual_prompts': ['Scientific diagram', 'Research methodology flowchart']
+                    },
+                    {
+                        'title': 'Key Discoveries',
+                        'subtopics': ['Historical Development', 'Major Breakthroughs', 'Current Research'],
+                        'bullets': [
+                            'Historical discoveries shaped current understanding',
+                            'Major breakthroughs advanced the field significantly',
+                            'Current research continues to expand knowledge',
+                            'Future discoveries promise new insights'
+                        ],
+                        'narration': f'Let me explain the historical development of {topic} in detail. The historical development of this field shows how our understanding has evolved over time through the contributions of many researchers and scientists. Early discoveries laid the groundwork for current knowledge, while each generation of researchers built upon previous work to advance the field further. This historical context helps us understand why current theories, methods, and applications exist in their present form. The historical development reveals the challenges, controversies, and breakthroughs that shaped the field\'s evolution. Next, let me explain major breakthroughs in detail. Major breakthroughs in this field have significantly advanced our understanding and opened new areas of research and application. These breakthroughs often came from unexpected directions and required innovative thinking, creative approaches, and persistent effort. They have had lasting impacts on the field and continue to influence current research directions and practical applications. These breakthroughs represent paradigm shifts that fundamentally changed how we understand and approach problems in this field. Finally, let me explain current research in detail. Current research in this field continues to expand our knowledge and push the boundaries of understanding in exciting new directions. Researchers are exploring new questions, developing new methods, and discovering new applications that were previously unimaginable. This ongoing research ensures that the field remains dynamic, relevant, and continues to provide valuable insights and solutions.',
+                        'examples': ['Nobel Prize-winning research', 'Recent breakthrough publications'],
+                        'visual_prompts': ['Timeline of discoveries', 'Research impact diagram']
+                    },
+                    {
+                        'title': 'Practical Applications',
+                        'subtopics': ['Laboratory Use', 'Industrial Applications', 'Everyday Impact'],
+                        'bullets': [
+                            'Laboratory applications demonstrate principles',
+                            'Industrial uses show practical value',
+                            'Everyday applications affect daily life',
+                            'Future applications hold great promise'
+                        ],
+                        'narration': f'Let me explain the laboratory use of {topic} in detail. Laboratory applications help researchers understand fundamental principles, test theoretical predictions, and develop new methodologies and techniques. These controlled experiments provide valuable insights that cannot be obtained through observation alone and allow for precise manipulation of variables. Laboratory work is essential for advancing our understanding and developing new applications. These laboratory applications serve as the foundation for larger-scale implementations and real-world applications. Next, let me explain industrial applications in detail. Industrial applications of this field show its practical value in solving real-world problems and improving industrial processes. These applications often involve scaling up laboratory findings to industrial processes and adapting theoretical knowledge to practical constraints. They demonstrate how scientific knowledge can be translated into practical benefits and economic value. Finally, let me explain everyday impact in detail. The everyday impact of this field affects our daily lives in numerous ways, often without us realizing it. From the technology we use to the products we consume, this field influences many aspects of modern life and society. Understanding this everyday impact helps us appreciate the importance and relevance of this field.',
+                        'examples': ['Medical diagnostic tools', 'Environmental monitoring systems'],
+                        'visual_prompts': ['Application diagram', 'Impact assessment chart']
+                    }
+                ]
+            }
+        }
+        
+        # Determine template based on topic
+        topic_category = self._categorize_topic(topic)
+        template = templates.get(topic_category, templates['technology'])
+        
+        # Customize template for specific topic
+        slides = []
+        for slide in template['slides']:
+            customized_slide = slide.copy()
+            customized_slide['title'] = slide['title'].replace('{topic}', topic)
+            customized_slide['narration'] = slide['narration'].replace('{topic}', topic)
+            slides.append(customized_slide)
+        
+        return {
+            'topic': topic,
+            'level': level,
+            'slides': slides[:num_slides]
+        }
 
     def fetch_topic_knowledge(self, topic: str) -> Dict[str, Any]:
         """Fetch summary, sections, and image candidates from Wikipedia/Wikimedia."""
@@ -571,3 +825,33 @@ Do not include markdown fences or any text outside JSON.
 
         refined["slides"] = slides
         return refined
+
+    def _categorize_topic(self, topic: str) -> str:
+        """Categorize topic for dynamic content adaptation"""
+        topic_lower = topic.lower()
+        
+        # Technology & Science
+        if any(word in topic_lower for word in ['ai', 'machine learning', 'neural', 'algorithm', 'programming', 'software', 'computer', 'data', 'technology']):
+            return 'technology'
+        elif any(word in topic_lower for word in ['physics', 'chemistry', 'biology', 'science', 'research', 'experiment', 'molecular', 'atomic']):
+            return 'science'
+        # Business & Economics
+        elif any(word in topic_lower for word in ['business', 'economics', 'finance', 'marketing', 'management', 'strategy', 'market', 'investment']):
+            return 'business'
+        # Education & Learning
+        elif any(word in topic_lower for word in ['education', 'learning', 'teaching', 'study', 'academic', 'university', 'school', 'course']):
+            return 'education'
+        # Health & Medicine
+        elif any(word in topic_lower for word in ['health', 'medical', 'medicine', 'disease', 'treatment', 'therapy', 'patient', 'clinical']):
+            return 'health'
+        # Arts & Culture
+        elif any(word in topic_lower for word in ['art', 'music', 'culture', 'history', 'literature', 'design', 'creative', 'artist']):
+            return 'arts'
+        # Nature & Environment
+        elif any(word in topic_lower for word in ['nature', 'environment', 'climate', 'ecology', 'sustainability', 'green', 'earth', 'planet']):
+            return 'nature'
+        # Space & Astronomy
+        elif any(word in topic_lower for word in ['space', 'astronomy', 'planet', 'galaxy', 'universe', 'cosmos', 'star', 'moon']):
+            return 'space'
+        else:
+            return 'general'
