@@ -274,33 +274,15 @@ def video_generator_interface():
         """, unsafe_allow_html=True)
         colA, colB = st.columns([2,1])
         with colA:
-            topic = st.text_input("Topic (optional)", placeholder="e.g., Black holes, Backpropagation, IPv6")
+            topic = st.text_input("Topic", placeholder="e.g., Black holes, Backpropagation, IPv6", help="Enter a clear, specific topic to explain")
             uploads = st.file_uploader(
-                "Upload documents (PDF/DOCX/TXT/Images)",
+                "Upload documents (PDF/DOCX/TXT/Images) - Optional",
                 type=["pdf","docx","txt","png","jpg","jpeg"],
-                accept_multiple_files=True
-            )
-            bg_images = st.file_uploader(
-                "Optional: Background images (PNG/JPG). If none provided, we'll try testbg.jpeg or auto images.",
-                type=["png","jpg","jpeg"],
                 accept_multiple_files=True,
-                key="bg_images"
+                help="Upload additional content to enhance the explanation"
             )
         with colB:
-            audience = st.selectbox("Audience", ["beginner","intermediate","advanced"], index=0)
-        st.markdown("#### 🎞️ Reference video (optional)")
-        ref_video = st.file_uploader("Upload a reference MP4", type=["mp4"], accept_multiple_files=False, key="ref_video2")
-        if ref_video is not None:
-            try:
-                tmpv = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-                tmpv.write(ref_video.read())
-                tmpv.flush()
-                tmpv.close()
-                st.session_state.reference_video_path = tmpv.name
-                st.success("Reference video uploaded.")
-                st.video(st.session_state.reference_video_path)
-            except Exception as e:
-                st.error(f"Failed to store reference video: {e}")
+            audience = st.selectbox("Audience Level", ["beginner","intermediate","advanced"], index=0, help="Choose the complexity level for your explanation")
         with st.expander("Advanced Video Settings"):
             video_width2 = st.number_input("Video Width", 640, 1920, Config.DEFAULT_VIDEO_WIDTH, 160, key="vw3")
             video_height2 = st.number_input("Video Height", 480, 1080, Config.DEFAULT_VIDEO_HEIGHT, 120, key="vh3")
@@ -311,7 +293,7 @@ def video_generator_interface():
             voice_gender = st.selectbox("Gender", ["male","female","neutral"], index=0)
         with colv2:
             voice_name = st.text_input("Voice name (optional)", placeholder="e.g., Adam, Rachel (ElevenLabs)")
-        if st.button("🎬 Generate Video", use_container_width=True):
+        if st.button("🎬 Generate Video", use_container_width=True, key="generate_main_video"):
             if st.session_state.ai_service is None or st.session_state.video_generator is None:
                 st.error("❌ Services not initialized. Click 'Initialize Services' in sidebar.")
             else:
@@ -362,8 +344,9 @@ def video_generator_interface():
                             st.warning("Please enter a topic or upload content.")
                             return
                         # 2) Ask AI for structured explainer directly (no visible script)
+                        topic_text = topic.strip() or "Document"
                         data = st.session_state.ai_service.generate_explainer_structured(
-                            topic=topic.strip() or "Document",
+                            topic=topic_text,
                             level=audience,
                             num_slides=6,
                             avoid_text=None
@@ -374,41 +357,36 @@ def video_generator_interface():
                         kb2 = st.session_state.ai_service.fetch_topic_knowledge(topic.strip() or "") if topic.strip() else {}
                         if kb2 and kb2.get("summary"):
                             data.setdefault("kb_images", kb2.get("images", []))
-                        # 3) Style from reference
-                        style = None
-                        if st.session_state.reference_video_path:
-                            style = st.session_state.video_generator.extract_style_from_reference(st.session_state.reference_video_path)
+                        # 3) Generate video with clean, focused content
                         # Target total duration is automatically decided within 4–10 minutes
                         # do NOT repeat narration; rely on per-slide timing and audio padding for target duration
                         # 4) Render directly
                         temp_video = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4"); temp_video.close()
-                        # Persist background images if provided
-                        bg_paths = []
-                        try:
-                            if bg_images:
-                                for bf in bg_images:
-                                    tmpb = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(bf.name)[1])
-                                    tmpb.write(bf.read())
-                                    tmpb.flush()
-                                    tmpb.close()
-                                    bg_paths.append(tmpb.name)
-                            video_path = st.session_state.video_generator.generate_slideshow_video_structured(
-                                structured=data,
-                                image_paths=bg_paths if bg_paths else None,
-                                output_path=temp_video.name,
-                                width=video_width2,
-                                height=video_height2,
-                                fps=fps2,
-                                seconds_per_slide=8.0,
-                                desired_total_seconds=None,
-                                style=style,
-                                voice_gender=voice_gender,
-                                voice_name=voice_name,
-                            )
-                            # Save the path
-                            st.session_state.explainer_video_path = video_path
-                            st.success("✅ Video generated successfully!")
-                            st.video(video_path)
+                        
+                        video_path = st.session_state.video_generator.generate_slideshow_video_structured(
+                            structured=data,
+                            image_paths=None,  # No custom background images
+                            output_path=temp_video.name,
+                            width=video_width2,
+                            height=video_height2,
+                            fps=fps2,
+                            seconds_per_slide=8.0,
+                            desired_total_seconds=None,
+                            style=None,  # No reference video style
+                            voice_gender=voice_gender,
+                            voice_name=voice_name,
+                            topic=topic_text,  # Pass topic for background selection
+                        )
+                        
+                        # Save the path
+                        st.session_state.explainer_video_path = video_path
+                        st.success("✅ Video generated successfully!")
+                        st.video(video_path)
+                        
+                        # Video actions in columns
+                        col1, col2 = st.columns([3, 1])
+                        
+                        with col1:
                             with open(video_path, "rb") as file:
                                 st.download_button(
                                     label="⬇️ Download Video",
@@ -417,22 +395,53 @@ def video_generator_interface():
                                     mime="video/mp4",
                                     use_container_width=True
                                 )
-                        except Exception as e:
-                            st.error(f"❌ Failed to generate video: {e}")
+                        
+                        with col2:
+                            if st.button("🗑️ Delete Video", type="secondary", use_container_width=True, key="delete_generated_video"):
+                                try:
+                                    # Delete the video file
+                                    if os.path.exists(video_path):
+                                        os.unlink(video_path)
+                                    # Clear the session state
+                                    st.session_state.explainer_video_path = None
+                                    st.success("✅ Video deleted successfully!")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"❌ Failed to delete video: {e}")
+                    except Exception as e:
+                        st.error(f"❌ Failed to generate video: {e}")
                     except Exception as e:
                         st.error(f"❌ Unexpected error during generation: {e}")
 
         # Display previously generated video if available
         if st.session_state.explainer_video_path:
             st.video(st.session_state.explainer_video_path)
-            with open(st.session_state.explainer_video_path, "rb") as file:
-                st.download_button(
-                    label="⬇️ Download Explainer Video",
-                    data=file.read(),
-                    file_name=f"explainer_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4",
-                    mime="video/mp4",
-                    use_container_width=True
-                )
+            
+            # Video actions in columns
+            col1, col2 = st.columns([3, 1])
+            
+            with col1:
+                with open(st.session_state.explainer_video_path, "rb") as file:
+                    st.download_button(
+                        label="⬇️ Download Explainer Video",
+                        data=file.read(),
+                        file_name=f"explainer_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4",
+                        mime="video/mp4",
+                        use_container_width=True
+                    )
+            
+            with col2:
+                if st.button("🗑️ Delete Video", type="secondary", use_container_width=True, key="delete_existing_video"):
+                    try:
+                        # Delete the video file
+                        if os.path.exists(st.session_state.explainer_video_path):
+                            os.unlink(st.session_state.explainer_video_path)
+                        # Clear the session state
+                        st.session_state.explainer_video_path = None
+                        st.success("✅ Video deleted successfully!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Failed to delete video: {e}")
 
 def main():
     """Main application function"""
@@ -454,7 +463,7 @@ def main():
             st.info("🟡 Services Not Initialized")
         
         # Initialize services button
-        if st.button("🔄 Initialize Services", use_container_width=True):
+        if st.button("🔄 Initialize Services", use_container_width=True, key="initialize_services"):
             initialize_services()
         
         st.divider()
@@ -472,7 +481,7 @@ def main():
                 )
         
         # Clear conversation
-        if st.button("🗑️ Clear Conversation", use_container_width=True):
+        if st.button("🗑️ Clear Conversation", use_container_width=True, key="clear_conversation"):
             st.session_state.messages = []
             st.session_state.last_response = None
             st.session_state.generated_video_path = None

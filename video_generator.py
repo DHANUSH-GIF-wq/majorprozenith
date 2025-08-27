@@ -3,9 +3,13 @@ import numpy as np
 import tempfile
 import os
 from gtts import gTTS
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Dict
 import logging
 from config import Config
+import requests
+import json
+from PIL import Image
+import io
 
 # Attempt to import MoviePy; provide a clear message if unavailable
 try:
@@ -44,12 +48,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class VideoGenerator:
-	"""Handles video generation from text content"""
+	"""Handles video generation from text content with enhanced features"""
 	
 	def __init__(self):
 		self.config = Config()
 		# Load the default background image
 		self.default_background = self._load_default_background()
+		# Cache for topic-related backgrounds
+		self.topic_backgrounds = {}
 	
 	def _load_default_background(self) -> Optional[np.ndarray]:
 		"""Load the default background image testbg.jpeg"""
@@ -68,6 +74,319 @@ class VideoGenerator:
 			logger.error(f"Error loading default background image: {e}")
 		return None
 	
+	def _get_topic_background(self, topic: str) -> Optional[np.ndarray]:
+		"""Get a topic-related background image from Unsplash"""
+		try:
+			if topic in self.topic_backgrounds:
+				return self.topic_backgrounds[topic]
+			
+			# Search for topic-related images on Unsplash
+			search_query = topic.replace(" ", "+").lower()
+			url = f"https://api.unsplash.com/search/photos?query={search_query}&orientation=landscape&per_page=1"
+			
+			# For demo purposes, we'll use a fallback approach
+			# In production, you'd need an Unsplash API key
+			fallback_images = {
+				"technology": "https://images.unsplash.com/photo-1518709268805-4e9042af2176?w=1280&h=720&fit=crop",
+				"science": "https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=1280&h=720&fit=crop",
+				"education": "https://images.unsplash.com/photo-1523050854058-8df90110c9c1?w=1280&h=720&fit=crop",
+				"business": "https://images.unsplash.com/photo-1552664730-d307ca884978?w=1280&h=720&fit=crop",
+				"health": "https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?w=1280&h=720&fit=crop",
+				"art": "https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=1280&h=720&fit=crop",
+				"nature": "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=1280&h=720&fit=crop",
+				"space": "https://images.unsplash.com/photo-1446776811953-b23d0bd8436c?w=1280&h=720&fit=crop"
+			}
+			
+			# Find the best matching fallback image
+			best_match = None
+			best_score = 0
+			for key, image_url in fallback_images.items():
+				score = self._calculate_topic_similarity(topic, key)
+				if score > best_score:
+					best_score = score
+					best_match = image_url
+			
+			if best_match:
+				# Download and process the image
+				response = requests.get(best_match, timeout=10)
+				if response.status_code == 200:
+					# Convert PIL image to OpenCV format
+					pil_image = Image.open(io.BytesIO(response.content))
+					opencv_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+					
+					# Cache the result
+					self.topic_backgrounds[topic] = opencv_image
+					logger.info(f"Loaded topic-related background for: {topic}")
+					return opencv_image
+			
+		except Exception as e:
+			logger.warning(f"Failed to get topic background for {topic}: {e}")
+		
+		return None
+	
+	def _calculate_topic_similarity(self, topic: str, category: str) -> float:
+		"""Calculate similarity between topic and category for background selection"""
+		topic_words = set(topic.lower().split())
+		category_words = set(category.lower().split())
+		
+		# Simple word overlap similarity
+		if not topic_words or not category_words:
+			return 0.0
+		
+		intersection = len(topic_words.intersection(category_words))
+		union = len(topic_words.union(category_words))
+		
+		return intersection / union if union > 0 else 0.0
+	
+	def _improve_content_flow(self, text: str) -> str:
+		"""Improve content flow to avoid repetition and improve TTS quality"""
+		# Remove excessive punctuation that can cause TTS breaks
+		text = text.replace("...", ".")
+		text = text.replace("..", ".")
+		text = text.replace("--", "-")
+		
+		# Add natural pauses for better TTS flow
+		sentences = text.split(".")
+		improved_sentences = []
+		
+		for sentence in sentences:
+			sentence = sentence.strip()
+			if sentence:
+				# Add natural pauses after key phrases
+				sentence = sentence.replace(" for example", ". For example")
+				sentence = sentence.replace(" however", ". However")
+				sentence = sentence.replace(" therefore", ". Therefore")
+				sentence = sentence.replace(" in addition", ". In addition")
+				sentence = sentence.replace(" on the other hand", ". On the other hand")
+				
+				improved_sentences.append(sentence)
+		
+		# Join with proper spacing
+		result = ". ".join(improved_sentences)
+		
+		# Ensure proper capitalization
+		if result:
+			result = result[0].upper() + result[1:]
+		
+		return result
+	
+	def _create_enhanced_slide_content(self, slide: Dict) -> str:
+		"""Create enhanced slide content with better flow and structure - NotebookLM style"""
+		title = slide.get("title", "")
+		bullets = slide.get("bullets", [])
+		narration = slide.get("narration", "")
+		
+		# For NotebookLM style, create flowing explanations, not bullet reading
+		if narration:
+			# Use existing narration but clean it up
+			content = narration
+		else:
+			# Create flowing explanation from bullets (not reading them)
+			bullet_texts = []
+			for i, bullet in enumerate(bullets):
+				if i == 0:
+					bullet_texts.append(f"Let me explain {bullet.lower()}")
+				elif i == len(bullets) - 1:
+					bullet_texts.append(f"Finally, {bullet.lower()}")
+				else:
+					bullet_texts.append(f"Next, {bullet.lower()}")
+			
+			content = ". ".join(bullet_texts)
+		
+		# Improve content flow for NotebookLM style
+		content = self._improve_content_flow(content)
+		
+		return content
+	
+	def _draw_enhanced_slide_text(self, frame: np.ndarray, title: str, bullets: list, topic: str = "") -> np.ndarray:
+		"""Enhanced text overlay with better positioning and styling"""
+		img = frame.copy()
+		
+		# Create a more sophisticated overlay
+		overlay = img.copy()
+		
+		# Gradient overlay for better text readability
+		height, width = img.shape[:2]
+		for y in range(height):
+			alpha = 0.3 + (0.2 * y / height)  # Gradient from top to bottom
+			overlay[y, :] = img[y, :] * (1 - alpha) + np.array([0, 0, 0]) * alpha
+		
+		img = overlay.astype(np.uint8)
+		
+		# Add topic indicator if available
+		if topic:
+			topic_bg = np.zeros((60, width, 3), dtype=np.uint8)
+			topic_bg[:] = (50, 100, 200)  # Blue background
+			img[20:80, :] = cv2.addWeighted(img[20:80, :], 0.3, topic_bg, 0.7, 0)
+			
+			# Topic text
+			cv2.putText(img, f"Topic: {topic}", (30, 55), 
+						cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, 
+						lineType=cv2.LINE_AA)
+		
+		# Title with enhanced styling
+		if title:
+			safe_title = self._sanitize_overlay_text(str(title))
+			max_width = width - 120
+			title_lines = self._wrap_text_to_width(safe_title, 1.3, 3, max_width)
+			
+			# Center the title
+			y_title = 140
+			for tl in title_lines[:2]:
+				text_size = cv2.getTextSize(tl, cv2.FONT_HERSHEY_SIMPLEX, 1.3, 3)[0]
+				x_center = (width - text_size[0]) // 2
+				x_center = max(60, min(x_center, width - text_size[0] - 60))
+				
+				# Title background for better readability
+				cv2.rectangle(img, (x_center - 10, y_title - 35), 
+							(x_center + text_size[0] + 10, y_title + 10), 
+							(0, 0, 0), -1)
+				cv2.rectangle(img, (x_center - 10, y_title - 35), 
+							(x_center + text_size[0] + 10, y_title + 10), 
+							(255, 255, 255), 2)
+				
+				cv2.putText(img, tl, (x_center, y_title), 
+							cv2.FONT_HERSHEY_SIMPLEX, 1.3, (255, 255, 255), 3, 
+							lineType=cv2.LINE_AA)
+				y_title += 50
+		
+		# Bullets with better positioning
+		y_start = 220
+		line_height = 40
+		
+		for i, bullet in enumerate(bullets):
+			safe_bullet = self._sanitize_overlay_text(str(bullet))
+			max_width = width - 120
+			wrapped = self._wrap_text_to_width(safe_bullet, 0.9, 2, max_width)
+			
+			for j, line in enumerate(wrapped):
+				y = y_start + i * line_height + j * 30
+				
+				# Bullet background
+				text_size = cv2.getTextSize(f"• {line}", cv2.FONT_HERSHEY_SIMPLEX, 0.9, 2)[0]
+				cv2.rectangle(img, (50, y - 20), (60 + text_size[0], y + 10), 
+							(0, 0, 0), -1)
+				
+				cv2.putText(img, f"• {line}", (60, y), 
+							cv2.FONT_HERSHEY_SIMPLEX, 0.9, (240, 240, 240), 2, 
+							lineType=cv2.LINE_AA)
+		
+		return img
+
+	def _draw_clean_slide_text(self, frame: np.ndarray, title: str, bullets: list, topic: str = "", narration: str = "") -> np.ndarray:
+		"""Clean, NotebookLM-style text overlay with minimal content and clear focus"""
+		img = frame.copy()
+		
+		# Create a subtle overlay for better readability
+		overlay = img.copy()
+		height, width = img.shape[:2]
+		
+		# Subtle gradient overlay (lighter than before)
+		for y in range(height):
+			alpha = 0.15 + (0.1 * y / height)  # Much lighter overlay
+			overlay[y, :] = img[y, :] * (1 - alpha) + np.array([0, 0, 0]) * alpha
+		
+		img = overlay.astype(np.uint8)
+		
+		# Add topic indicator at top (subtle)
+		if topic:
+			topic_bg = np.zeros((50, width, 3), dtype=np.uint8)
+			topic_bg[:] = (40, 80, 160)  # Subtle blue
+			img[20:70, :] = cv2.addWeighted(img[20:70, :], 0.8, topic_bg, 0.2, 0)
+			
+			# Topic text (smaller, subtle)
+			cv2.putText(img, f"Topic: {topic}", (30, 45), 
+						cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, 
+						lineType=cv2.LINE_AA)
+		
+		# Title - clean and centered (main focus)
+		if title:
+			safe_title = self._sanitize_overlay_text(str(title))
+			max_width = width - 100
+			title_lines = self._wrap_text_to_width(safe_title, 1.5, 2, max_width)
+			
+			# Center the title prominently
+			y_title = 150
+			for tl in title_lines[:2]:
+				text_size = cv2.getTextSize(tl, cv2.FONT_HERSHEY_SIMPLEX, 1.5, 2)[0]
+				x_center = (width - text_size[0]) // 2
+				x_center = max(50, min(x_center, width - text_size[0] - 50))
+				
+				# Clean title background (minimal)
+				cv2.rectangle(img, (x_center - 15, y_title - 40), 
+							(x_center + text_size[0] + 15, y_title + 15), 
+							(0, 0, 0), -1)
+				cv2.rectangle(img, (x_center - 15, y_title - 40), 
+							(x_center + text_size[0] + 15, y_title + 15), 
+							(255, 255, 255), 1)
+				
+				cv2.putText(img, tl, (x_center, y_title), 
+							cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 2, 
+							lineType=cv2.LINE_AA)
+				y_title += 60
+		
+		# Key points - minimal, clean (only 2-3 main points)
+		key_points = bullets[:3]  # Limit to 3 key points
+		y_start = 280
+		line_height = 50
+		
+		for i, point in enumerate(key_points):
+			safe_point = self._sanitize_overlay_text(str(point))
+			max_width = width - 100
+			wrapped = self._wrap_text_to_width(safe_point, 1.0, 1, max_width)
+			
+			for j, line in enumerate(wrapped):
+				y = y_start + i * line_height + j * 35
+				
+				# Clean bullet background (minimal)
+				text_size = cv2.getTextSize(f"• {line}", cv2.FONT_HERSHEY_SIMPLEX, 1.0, 1)[0]
+				cv2.rectangle(img, (60, y - 15), (70 + text_size[0], y + 10), 
+							(0, 0, 0), -1)
+				
+				cv2.putText(img, f"• {line}", (70, y), 
+							cv2.FONT_HERSHEY_SIMPLEX, 1.0, (240, 240, 240), 1, 
+							lineType=cv2.LINE_AA)
+		
+		# Add narration content - THIS IS THE KEY FIX!
+		# Get narration from the slide data
+		narration = getattr(self, '_current_slide_narration', '')
+		if narration:
+			# Display narration content below key points
+			y_narration = y_start + len(key_points) * line_height + 80
+			max_width = width - 120
+			
+			# Split narration into readable chunks
+			words = narration.split()
+			lines = []
+			current_line = ""
+			
+			for word in words:
+				test_line = current_line + " " + word if current_line else word
+				if len(test_line) * 12 <= max_width:  # Approximate character width
+					current_line = test_line
+				else:
+					if current_line:
+						lines.append(current_line)
+					current_line = word
+			
+			if current_line:
+				lines.append(current_line)
+			
+			# Display narration lines
+			for i, line in enumerate(lines[:6]):  # Limit to 6 lines
+				y = y_narration + i * 30
+				
+				# Clean background for narration
+				text_size = cv2.getTextSize(line, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 1)[0]
+				cv2.rectangle(img, (60, y - 10), (70 + text_size[0], y + 15), 
+							(0, 0, 0), -1)
+				
+				cv2.putText(img, line, (70, y), 
+							cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 1, 
+							lineType=cv2.LINE_AA)
+		
+		return img
+
 	def set_default_background(self, image_path: str) -> bool:
 		"""Set a new default background image"""
 		try:
@@ -116,12 +435,8 @@ class VideoGenerator:
 		return slides
 
 	def _compose_slide_tts_text(self, slide: dict) -> str:
-		parts = []
-		if slide.get("title"):
-			parts.append(slide["title"]) 
-		for b in slide.get("bullets", []):
-			parts.append(b)
-		return ". ".join(parts)
+		"""Create improved TTS text that flows better and avoids repetition"""
+		return self._create_enhanced_slide_content(slide)
 
 	def _resize_and_crop(self, img: np.ndarray, width: int, height: int) -> np.ndarray:
 		"""Resize to cover and center-crop to target size."""
@@ -327,12 +642,24 @@ class VideoGenerator:
 		style: Optional[dict] = None,
 		voice_gender: Optional[str] = None,
 		voice_name: Optional[str] = None,
+		topic: Optional[str] = None,
 	) -> str:
 		"""Render a slideshow using structured slides. Uses narration for TTS and bullets on-screen."""
 		# convert to script-like for on-screen bullets, but TTS uses narration
 		slides = structured.get("slides", []) if isinstance(structured, dict) else []
 		if not slides:
 			raise ValueError("Structured slides missing")
+		
+		# Extract topic from structured data if not provided
+		if not topic and isinstance(structured, dict):
+			topic = structured.get("topic", "")
+			if not topic and slides:
+				# Try to extract from first slide title
+				first_title = slides[0].get("title", "")
+				if ":" in first_title:
+					topic = first_title.split(":")[-1].strip()
+				else:
+					topic = first_title
 		# Prepare a pseudo-script to reuse frame rendering
 		formatted = []
 		for i, s in enumerate(slides, 1):
@@ -344,20 +671,15 @@ class VideoGenerator:
 		width = width or self.config.DEFAULT_VIDEO_WIDTH
 		height = height or self.config.DEFAULT_VIDEO_HEIGHT
 		fps = fps or self.config.DEFAULT_FPS
-		# load images (auto-fetch from structured.kb if none provided)
-		loaded_images: List[Optional[np.ndarray]] = []
-		if image_paths:
-			for p in image_paths:
-				try:
-					img = cv2.imread(p)
-					if img is None:
-						loaded_images.append(None)
-					else:
-						loaded_images.append(self._resize_and_crop(img, width, height))
-				except Exception:
-					loaded_images.append(None)
-		else:
-			# Prefer local default background 'testbg.jpeg' if available
+		# Use topic-related backgrounds only (no custom images)
+		loaded_images = []
+		if topic:
+			topic_bg = self._get_topic_background(topic)
+			if topic_bg is not None:
+				loaded_images.append(self._resize_and_crop(topic_bg, width, height))
+		
+		# Fallback to default background if no topic background
+		if not loaded_images:
 			try:
 				proj_dir = os.path.dirname(os.path.abspath(__file__))
 				default_bg = os.path.join(proj_dir, "testbg.jpeg")
@@ -367,21 +689,6 @@ class VideoGenerator:
 						loaded_images.append(self._resize_and_crop(img, width, height))
 			except Exception:
 				pass
-			# Otherwise attempt to fetch images via URLs if present under key 'kb_images'
-			if not loaded_images:
-				kb_images = structured.get("kb_images") if isinstance(structured, dict) else None
-				if isinstance(kb_images, list):
-					for url in kb_images[:10]:
-						try:
-							import urllib.request
-							resp = urllib.request.urlopen(url, timeout=10)
-							data = resp.read()
-							arr = np.frombuffer(data, np.uint8)
-							img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-							if img is not None:
-								loaded_images.append(self._resize_and_crop(img, width, height))
-						except Exception:
-							loaded_images.append(None)
 		# iterate
 		temp_silent_videos = []
 		temp_audios = []
@@ -389,10 +696,9 @@ class VideoGenerator:
 		# First synthesize audio for each slide without saying slide numbers
 		audio_durations = []
 		for idx, s in enumerate(slides):
-			# narration text preferred; fallback to bullets join
-			narr = s.get("narration") or ". ".join(s.get("bullets", []))
-			narr_full = narr.strip()
-			audio_path = self.text_to_speech(narr_full, voice_gender=voice_gender, voice_name=voice_name)
+			# Use enhanced content flow for better TTS
+			slide_content = self._create_enhanced_slide_content(s)
+			audio_path = self.text_to_speech(slide_content, voice_gender=voice_gender, voice_name=voice_name)
 			temp_audios.append(audio_path)
 			dur = None
 			if MUTAGEN_AVAILABLE:
@@ -421,7 +727,10 @@ class VideoGenerator:
 			fourcc = cv2.VideoWriter_fourcc(*"mp4v")
 			writer = cv2.VideoWriter(temp_video_path, fourcc, fps, (width, height))
 			frames = int(duration * fps)
-			bg_img = loaded_images[idx % len(loaded_images)] if loaded_images else None
+			# Get topic-related background if available
+			topic_bg = self._get_topic_background(topic) if topic else None
+			bg_img = loaded_images[idx % len(loaded_images)] if loaded_images else topic_bg
+			
 			for f in range(frames):
 				t = f / float(fps)
 				if bg_img is not None:
@@ -431,8 +740,12 @@ class VideoGenerator:
 				else:
 					frame = np.zeros((height, width, 3), dtype=np.uint8)
 					frame[:] = (20, 30, 45)
-				# On-screen bullets only; avoid explicit slide numbering in overlays
-				frame = self._draw_slide_text(frame, s.get("title", ""), s.get("bullets", []))
+				
+				# Use clean, NotebookLM-style text rendering
+				# Set current slide narration for display
+				self._current_slide_narration = s.get("narration", "")
+				frame = self._draw_clean_slide_text(frame, s.get("title", ""), s.get("bullets", []), topic)
+				
 				if t < 1.0:
 					alpha = max(0.0, min(1.0, t / 1.0))
 					frame = (frame.astype(np.float32) * alpha).astype(np.uint8)
@@ -448,7 +761,7 @@ class VideoGenerator:
 				cmd = [
 					ffmpeg_exe, "-y",
 					"-i", temp_video_path,
-					"-i", audio_path,
+					"-i", temp_audios[idx],
 					"-filter_complex", f"[1:a]apad[aout]",
 					"-map", "0:v",
 					"-map", "[aout]",
@@ -458,8 +771,14 @@ class VideoGenerator:
 					"-c:a", "aac",
 					av_out_path,
 				]
-				subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-				temp_av_videos.append(av_out_path)
+				result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+				if result.returncode == 0:
+					temp_av_videos.append(av_out_path)
+					logger.info(f"Audio merged successfully for slide {idx + 1}")
+				else:
+					logger.error(f"Failed to merge audio for slide {idx + 1}: {result.stderr}")
+					# Fallback: use video without audio
+					temp_av_videos.append(temp_video_path)
 			else:
 				raise RuntimeError("FFmpeg (imageio-ffmpeg) not available for structured slideshow generation.")
 		# concatenate
@@ -479,7 +798,11 @@ class VideoGenerator:
 			"-movflags", "+faststart",
 			output_path,
 		]
-		subprocess.run(concat_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		result = subprocess.run(concat_cmd, capture_output=True, text=True, timeout=120)
+		if result.returncode != 0:
+			logger.error(f"Final video concatenation failed: {result.stderr}")
+			raise RuntimeError(f"Failed to create final video: {result.stderr}")
+		logger.info("Final video concatenation successful")
 		for p in temp_silent_videos + temp_audios + temp_av_videos:
 			try:
 				if os.path.exists(p):
@@ -557,10 +880,12 @@ class VideoGenerator:
 			lines.append(current)
 		return lines
 	
-	def _draw_typewriter_frame(self, visible_text: str, width: int, height: int, caret_visible: bool) -> np.ndarray:
+	def _draw_typewriter_frame(self, visible_text: str, width: int, height: int, caret_visible: bool, topic: str = None) -> np.ndarray:
 		"""Render a frame showing the visible portion of text with a blinking caret."""
-		# Use default background if available, otherwise create a solid color frame
-		if self.default_background is not None:
+		# Use topic-related background if available, then default background
+		if topic and hasattr(self, '_current_topic_background') and self._current_topic_background is not None:
+			frame = self._resize_and_crop(self._current_topic_background, width, height)
+		elif self.default_background is not None:
 			frame = self._resize_and_crop(self.default_background, width, height)
 		else:
 		   frame = np.zeros((height, width, 3), dtype=np.uint8)
@@ -603,7 +928,8 @@ class VideoGenerator:
 		output_path: str = "final_explanation_video.mp4",
 		width: Optional[int] = None,
 		height: Optional[int] = None,
-		fps: Optional[int] = None
+		fps: Optional[int] = None,
+		topic: Optional[str] = None
 	) -> str:
 		"""
 		Generate video from text with typewriter animation, synced to TTS audio
@@ -630,8 +956,9 @@ class VideoGenerator:
 			if target_duration > self.config.MAX_VIDEO_DURATION:
 				target_duration = self.config.MAX_VIDEO_DURATION
 			
-			# 1) Generate audio
-			audio_path = self.text_to_speech(text)
+			# 1) Generate audio with improved content flow
+			improved_text = self._improve_content_flow(text)
+			audio_path = self.text_to_speech(improved_text)
 			
 			# 2) Determine audio duration
 			audio_duration = None
@@ -654,10 +981,14 @@ class VideoGenerator:
 			total_frames = int(final_duration * fps)
 			
 			# Typewriter timing: characters per second to finish at audio end
-			total_chars = max(1, len(text))
+			total_chars = max(1, len(improved_text))
 			chars_per_second = total_chars / max(0.1, audio_duration)
 			
-			# 4) Create temp video without audio with animated frames
+			# 4) Get topic-related background if available
+			if topic:
+				self._current_topic_background = self._get_topic_background(topic)
+			
+			# 5) Create temp video without audio with animated frames
 			temp_video = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
 			temp_video_path = temp_video.name
 			temp_video.close()
@@ -669,9 +1000,9 @@ class VideoGenerator:
 				t = frame_index / float(fps)
 				# Number of chars to reveal at time t
 				num_chars = int(min(total_chars, round(chars_per_second * t)))
-				visible_text = text[:num_chars]
+				visible_text = improved_text[:num_chars]
 				caret_visible = (frame_index // int(max(1, fps/2))) % 2 == 0 and num_chars < total_chars
-				frame = self._draw_typewriter_frame(visible_text, width, height, caret_visible)
+				frame = self._draw_typewriter_frame(visible_text, width, height, caret_visible, topic)
 				video_writer.write(frame)
 			
 			video_writer.release()
@@ -775,15 +1106,17 @@ class VideoGenerator:
 		temp_silent_videos = []
 		temp_audios = []
 		temp_av_videos = []
+		
+		# Extract topic from first slide title for background selection
+		topic = ""
+		if slides and slides[0].get("title"):
+			topic = slides[0]["title"].split(":")[-1].strip() if ":" in slides[0]["title"] else slides[0]["title"]
+		
 		for idx, slide in enumerate(slides):
-			# audio
+			# audio - use enhanced content flow
 			audio_text = self._compose_slide_tts_text(slide)
-			# narration text preferred; fallback to bullets join; ensure variation to avoid repetition
-			narr = slide.get("narration") or ". ".join(slide.get("bullets", []))
-			# add slide-specific prefix to reduce repetition artifacts in TTS prosody
-			narr_prefix = f"Slide {idx+1}. "
-			narr_full = (narr_prefix + narr).strip()
-			audio_path = self.text_to_speech(narr_full)
+			# Remove slide numbering to avoid repetition
+			audio_path = self.text_to_speech(audio_text)
 			temp_audios.append(audio_path)
 			# approximate duration using mutagen if available
 			audio_duration = None

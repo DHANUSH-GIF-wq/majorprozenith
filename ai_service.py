@@ -184,22 +184,57 @@ Do NOT include code fences or markdown outside the specified format.
         max_retries: int = 3,
     ) -> Dict[str, Any]:
         """
-        Generate a high-quality explainer with structured slides:
+        Generate a high-quality explainer with structured slides in NotebookLM style:
         [{ title, bullets[], narration, examples[], visual_prompts[] }]
         """
         constraints = (
             f"Avoid repeating the following text and produce novel explanations: {avoid_text[:800]}"
             if avoid_text else ""
         )
+        
+        # Adapt slide count based on topic complexity
+        topic_words = len(topic.split())
+        if topic_words <= 3:
+            # Simple topic - fewer slides, more focused
+            num_slides = min(4, num_slides)
+            focus_instruction = "Keep explanations very simple and focused. Use concrete examples."
+        elif topic_words <= 6:
+            # Medium topic - balanced approach
+            num_slides = min(5, num_slides)
+            focus_instruction = "Provide clear, step-by-step explanations with practical examples."
+        else:
+            # Complex topic - more comprehensive
+            num_slides = min(6, num_slides)
+            focus_instruction = "Break down complex concepts into digestible parts with clear examples."
+        
         prompt = f"""
-You are a master educator. Create a clear, engaging explainer for the topic: "{topic}".
+You are a master educator like NotebookLM. Create a clear, focused explainer for the topic: "{topic}".
 Audience level: {level}. Target {num_slides} slides.
+
+CRITICAL STYLE RULES - NEVER VIOLATE:
+- NEVER use question marks (?) anywhere in any content
+- NEVER start sentences with "What", "How", "Why", "When", "Where", "Which"
+- Write ONLY clear, declarative statements
+- Use simple, direct language
+- Focus on understanding, not memorization
+- Make each slide build on the previous one
+- Avoid jargon and complex terminology
+- Write like explaining to a friend
+
 Each slide must include:
-- title: short and catchy
-- bullets: 3-5 ultra concise points (no long sentences)
-- narration: 80-140 words, friendly tone, uses analogy or example
-- examples: 1-2 concrete, simple examples
-- visual_prompts: 1-2 short prompts describing visuals/diagrams/photos to show
+- title: short, clear statement (max 6 words, no questions)
+- bullets: 2-3 key points only (max 5 words each, simple statements)
+- narration: 40-80 words of flowing explanation that TEACHES the concept clearly
+- examples: 1 simple, concrete example that makes the concept clear
+- visual_prompts: 1 short prompt describing a simple visual/diagram
+
+Content Guidelines:
+- {focus_instruction}
+- Start with what the topic IS, not what it isn't
+- Use positive, clear language
+- Provide practical, real-world context
+- End with a clear takeaway or summary
+
 {constraints}
 
 Return ONLY valid JSON with this exact shape:
@@ -238,6 +273,10 @@ Do not include markdown fences or any text outside JSON.
                 # Basic validation
                 if not isinstance(data, dict) or "slides" not in data:
                     raise ValueError("Invalid JSON structure")
+                
+                # Clean the content to remove any question marks
+                data = self._clean_content_data(data)
+                
                 return data
             except Exception as e:
                 logger.warning(f"Structured explainer attempt {attempt + 1} failed: {e}")
@@ -248,6 +287,91 @@ Do not include markdown fences or any text outside JSON.
                         return self._build_structured_from_knowledge(topic, level, num_slides, kb)
                     # ultimate fallback
                     return self._build_placeholder_structured(topic, level)
+    
+    def _clean_content_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Clean content data to remove question marks and improve quality"""
+        if "slides" in data:
+            for slide in data["slides"]:
+                # Clean title
+                if "title" in slide:
+                    slide["title"] = self._clean_text(slide["title"])
+                
+                # Clean bullets
+                if "bullets" in slide:
+                    slide["bullets"] = [self._clean_text(bullet) for bullet in slide["bullets"]]
+                
+                # Clean narration
+                if "narration" in slide:
+                    slide["narration"] = self._clean_text(slide["narration"])
+                
+                # Clean examples
+                if "examples" in slide:
+                    slide["examples"] = [self._clean_text(example) for example in slide["examples"]]
+        
+        return data
+    
+    def _clean_text(self, text: str) -> str:
+        """Clean text to remove question marks and improve clarity"""
+        if not text:
+            return text
+        
+        # Remove question marks and convert to statements
+        text = text.replace("?", ".")
+        text = text.replace("??", ".")
+        text = text.replace("???", ".")
+        
+        # Convert questions to statements - MORE AGGRESSIVE
+        question_starters = [
+            "What is", "How does", "Why do", "When do", "Where do", "Which is",
+            "What are", "How are", "Why are", "When are", "Where are", "Which are",
+            "What", "How", "Why", "When", "Where", "Which"
+        ]
+        
+        for starter in question_starters:
+            if text.startswith(starter):
+                # Convert question to statement
+                if starter == "What is":
+                    text = text.replace("What is", "This is", 1)
+                elif starter == "How does":
+                    text = text.replace("How does", "This works by", 1)
+                elif starter == "Why do":
+                    text = text.replace("Why do", "This happens because", 1)
+                elif starter == "When do":
+                    text = text.replace("When do", "This occurs when", 1)
+                elif starter == "Where do":
+                    text = text.replace("Where do", "This happens in", 1)
+                elif starter == "Which is":
+                    text = text.replace("Which is", "This is", 1)
+                elif starter == "What are":
+                    text = text.replace("What are", "These are", 1)
+                elif starter == "How are":
+                    text = text.replace("How are", "These work by", 1)
+                elif starter == "Why are":
+                    text = text.replace("Why are", "These exist because", 1)
+                elif starter == "When are":
+                    text = text.replace("When are", "These occur when", 1)
+                elif starter == "Where are":
+                    text = text.replace("Where are", "These exist in", 1)
+                elif starter == "Which are":
+                    text = text.replace("Which are", "These are", 1)
+                elif starter == "What":
+                    text = text.replace("What", "This", 1)
+                elif starter == "How":
+                    text = text.replace("How", "This works by", 1)
+                elif starter == "Why":
+                    text = text.replace("Why", "This happens because", 1)
+                elif starter == "When":
+                    text = text.replace("When", "This occurs when", 1)
+                elif starter == "Where":
+                    text = text.replace("Where", "This happens in", 1)
+                elif starter == "Which":
+                    text = text.replace("Which", "This", 1)
+        
+        # Ensure proper sentence ending
+        if text and not text.endswith(('.', '!', ':')):
+            text = text + '.'
+        
+        return text
 
     def fetch_topic_knowledge(self, topic: str) -> Dict[str, Any]:
         """Fetch summary, sections, and image candidates from Wikipedia/Wikimedia."""
