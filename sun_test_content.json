@@ -1,0 +1,51 @@
+{
+  "topic": "The Sun: Our Star",
+  "level": "beginner",
+  "slides": [
+    {
+      "title": "What is The Sun: Our Star?",
+      "bullets": [
+        "Plain-language definition of The Sun: Our Star",
+        "Where it's used",
+        "Analogy"
+      ],
+      "narration": "The Sun: Our Star explained simply with an analogy and why it matters.",
+      "examples": [
+        "Everyday example of The Sun: Our Star"
+      ],
+      "visual_prompts": [
+        "Simple diagram of The Sun: Our Star"
+      ]
+    },
+    {
+      "title": "Core ideas",
+      "bullets": [
+        "Idea 1",
+        "Idea 2",
+        "Idea 3"
+      ],
+      "narration": "Key concepts step by step.",
+      "examples": [
+        "Before/after"
+      ],
+      "visual_prompts": [
+        "Step diagram"
+      ]
+    },
+    {
+      "title": "Recap",
+      "bullets": [
+        "Definition",
+        "Core ideas",
+        "Takeaway"
+      ],
+      "narration": "Wrap up.",
+      "examples": [
+        "Teach a friend"
+      ],
+      "visual_prompts": [
+        "Summary card"
+      ]
+    }
+  ]
+}

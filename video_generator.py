@@ -366,9 +366,9 @@ class VideoGenerator:
 		else:
 			y_start = y_title + 60
 		
-		# Bullet points - clean, minimal (NotebookLM style)
+		# Bullet points - clean, minimal (NotebookLM style) with improved spacing
 		y_start = max(y_start, 320)
-		line_height = 50
+		line_height = 60  # Increased from 50 to prevent overlapping
 		
 		for i, bullet in enumerate(bullets[:5]):  # Show up to 5 bullets
 			safe_bullet = self._sanitize_overlay_text(str(bullet))
@@ -376,17 +376,17 @@ class VideoGenerator:
 			wrapped = self._wrap_text_to_width(safe_bullet, 1.1, 1, max_width)
 			
 			for j, line in enumerate(wrapped):
-				y = y_start + i * line_height + j * 35
+				y = y_start + i * line_height + j * 40  # Increased spacing between wrapped lines
 				
 				# Clean bullet (no background for NotebookLM style)
 				cv2.putText(img, f"• {line}", (80, y), 
 							cv2.FONT_HERSHEY_SIMPLEX, 1.1, (240, 240, 240), 1, 
 							lineType=cv2.LINE_AA)
 		
-		# Narration content - clean, minimal (NotebookLM style)
+		# Narration content - clean, minimal (NotebookLM style) with improved spacing
 		if narration:
 			# Display narration content in a clean way
-			y_narration = y_start + len(bullets[:5]) * line_height + 80
+			y_narration = y_start + len(bullets[:5]) * line_height + 100  # Increased spacing
 			max_width = width - 100
 			
 			# Split narration into readable lines
@@ -406,9 +406,9 @@ class VideoGenerator:
 			if current_line:
 				lines.append(current_line)
 			
-			# Display narration lines with clean formatting
+			# Display narration lines with clean formatting and improved spacing
 			for i, line in enumerate(lines[:6]):  # Show up to 6 lines
-				y = y_narration + i * 30
+				y = y_narration + i * 35  # Increased spacing between lines
 				
 				# Clean narration text (no background for NotebookLM style)
 				cv2.putText(img, line, (80, y), 
@@ -561,13 +561,26 @@ class VideoGenerator:
 		return lines
 
 	def _sanitize_overlay_text(self, text: str) -> str:
-		"""Sanitize for OpenCV font: keep ASCII, remove common punctuation that clutters overlays."""
+		"""Sanitize for OpenCV font: keep ASCII, replace question marks with dashes, improve readability."""
 		try:
 			ascii_text = text.encode("ascii", errors="ignore").decode("ascii")
-			# Remove question marks and related patterns
-			for ch in ["?", "??", "???", "????", "?????", ".", ":", ";", "•", "–", "—"]:
+			# Replace question marks with dashes
+			ascii_text = ascii_text.replace("?", "-")
+			ascii_text = ascii_text.replace("??", "-")
+			ascii_text = ascii_text.replace("???", "-")
+			ascii_text = ascii_text.replace("????", "-")
+			ascii_text = ascii_text.replace("?????", "-")
+			
+			# Clean up other problematic characters but keep dashes
+			for ch in [".", ":", ";", "•", "–", "—"]:
 				ascii_text = ascii_text.replace(ch, "")
-			return ascii_text
+			
+			# Ensure proper spacing around dashes
+			ascii_text = ascii_text.replace(" - ", " - ")
+			ascii_text = ascii_text.replace("- ", "- ")
+			ascii_text = ascii_text.replace(" -", " -")
+			
+			return ascii_text.strip()
 		except Exception:
 			return text
 
@@ -586,7 +599,7 @@ class VideoGenerator:
 			for tl in title_lines[:2]:
 				cv2.putText(img, tl, (60, y_title), cv2.FONT_HERSHEY_SIMPLEX, 1.1, (255, 255, 255), 3, lineType=cv2.LINE_AA)
 				y_title += 46
-		# Bullets
+		# Bullets with improved spacing and dashes
 		y = 170
 		for bullet in bullets:
 			safe_bullet = self._sanitize_overlay_text(str(bullet))
@@ -594,7 +607,7 @@ class VideoGenerator:
 			wrapped = self._wrap_text_to_width(safe_bullet, 0.8, 2, max_width)
 			for line in wrapped:
 				cv2.putText(img, f"- {line}", (60, y), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (240, 240, 240), 2, lineType=cv2.LINE_AA)
-				y += 34
+				y += 40  # Increased from 34 to prevent overlapping
 		return img
 
 	def _draw_slide_text_styled(self, frame: np.ndarray, title: str, bullets: list, style: Optional[dict], subtopics: list = None, narration: str = "", topic_category: str = "default") -> np.ndarray:
@@ -655,7 +668,7 @@ class VideoGenerator:
 			wrapped = self._wrap_text_to_width(safe_bullet, bullet_scale, 2, max_width)
 			for line in wrapped:
 				cv2.putText(img, f"- {line}", (60, y), cv2.FONT_HERSHEY_SIMPLEX, bullet_scale, text_color, 2, lineType=cv2.LINE_AA)
-				y += int(34 * (bullet_scale / 0.8))
+				y += int(40 * (bullet_scale / 0.8))  # Increased spacing to prevent overlapping
 		
 		# Narration
 		if narration:
@@ -754,7 +767,7 @@ class VideoGenerator:
 		width: Optional[int] = None,
 		height: Optional[int] = None,
 		fps: Optional[int] = None,
-		seconds_per_slide: float = 8.0,
+		seconds_per_slide: float = 10.0,  # Reduced for faster generation
 		desired_total_seconds: Optional[float] = None,
 		style: Optional[dict] = None,
 		voice_gender: Optional[str] = None,
@@ -825,15 +838,17 @@ class VideoGenerator:
 				except Exception:
 					pass
 			audio_durations.append(float(dur or seconds_per_slide))
-		# Choose durations to target 4-10 minutes total
+		# Choose durations to target faster generation (10-30 seconds per slide)
 		num_slides = max(1, len(slides))
 		if desired_total_seconds is None:
-			base_total = sum(max(6.0, d + 1.0) for d in audio_durations)
-			desired_total = max(240.0, min(600.0, base_total))
+			# Target faster generation: 10-30 seconds per slide
+			base_total = sum(max(8.0, min(d + 0.5, 15.0)) for d in audio_durations)
+			desired_total = max(60.0, min(180.0, base_total))  # 1-3 minutes total
 		else:
-			desired_total = max(240.0, min(600.0, float(desired_total_seconds)))
-		median_audio = sorted(audio_durations)[len(audio_durations)//2] if audio_durations else seconds_per_slide
-		uniform_seconds_per_slide = max(median_audio + 0.5, desired_total / float(num_slides))
+			desired_total = max(60.0, min(180.0, float(desired_total_seconds)))
+		
+		median_audio = sorted(audio_durations)[len(audio_durations)//2] if audio_durations else 10.0
+		uniform_seconds_per_slide = max(8.0, min(15.0, desired_total / float(num_slides)))  # 8-15 seconds per slide
 		# Now render each slide using the decided duration
 		for idx, s in enumerate(slides):
 			duration = max(uniform_seconds_per_slide, audio_durations[idx])
@@ -1046,7 +1061,9 @@ class VideoGenerator:
 		width: Optional[int] = None,
 		height: Optional[int] = None,
 		fps: Optional[int] = None,
-		topic: Optional[str] = None
+		topic: Optional[str] = None,
+		voice_gender: Optional[str] = None,
+		voice_name: Optional[str] = None
 	) -> str:
 		"""
 		Generate video from text with typewriter animation, synced to TTS audio
@@ -1058,6 +1075,9 @@ class VideoGenerator:
 			width: Video width (optional)
 			height: Video height (optional)
 			fps: Frames per second (optional)
+			topic: Topic for background selection (optional)
+			voice_gender: Voice gender preference (optional)
+			voice_name: Specific voice name (optional)
 			
 		Returns:
 			Path to the generated video file
@@ -1075,7 +1095,7 @@ class VideoGenerator:
 			
 			# 1) Generate audio with improved content flow
 			improved_text = self._improve_content_flow(text)
-			audio_path = self.text_to_speech(improved_text)
+			audio_path = self.text_to_speech(improved_text, voice_gender=voice_gender, voice_name=voice_name)
 			
 			# 2) Determine audio duration
 			audio_duration = None
@@ -1181,7 +1201,7 @@ class VideoGenerator:
 		width: Optional[int] = None,
 		height: Optional[int] = None,
 		fps: Optional[int] = None,
-		seconds_per_slide: float = 7.0,
+		seconds_per_slide: float = 10.0,  # Reduced from 8.0 to 10.0 for faster generation
 		style: Optional[dict] = None,
 		topic: str = ""
 	) -> str:
@@ -1683,3 +1703,87 @@ class VideoGenerator:
 			logger.warning(f"Could not combine audio segments: {e}")
 			# Return the first audio file as fallback
 			return audio_segments[0]['path']
+
+	def generate_fast_video(self, text: str, output_path: str = "fast_video.mp4", duration: int = 10) -> str:
+		"""
+		Generate a fast video in 10 seconds or less
+		
+		Args:
+			text: Text content to display
+			output_path: Output video path
+			duration: Video duration in seconds (max 10)
+			
+		Returns:
+			Path to generated video
+		"""
+		try:
+			# Limit duration to 10 seconds max
+			duration = min(10, max(3, duration))
+			
+			# Simple background
+			width, height = 1280, 720
+			fps = 24
+			total_frames = int(duration * fps)
+			
+			# Create simple background
+			background = np.zeros((height, width, 3), dtype=np.uint8)
+			background[:] = (30, 40, 60)  # Dark blue background
+			
+			# Add gradient overlay
+			for y in range(height):
+				alpha = 0.3 + (0.2 * y / height)
+				background[y, :] = background[y, :] * (1 - alpha) + np.array([0, 0, 0]) * alpha
+			
+			# Prepare text
+			safe_text = self._sanitize_overlay_text(text)
+			words = safe_text.split()
+			
+			# Simple text animation - words appear one by one
+			words_per_second = max(1, len(words) // duration)
+			
+			# Create video writer
+			fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+			writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+			
+			for frame_idx in range(total_frames):
+				frame = background.copy()
+				current_time = frame_idx / fps
+				
+				# Calculate how many words to show
+				words_to_show = min(len(words), int(current_time * words_per_second))
+				
+				# Display text
+				if words_to_show > 0:
+					display_text = " ".join(words[:words_to_show])
+					
+					# Wrap text
+					max_width = width - 200
+					lines = self._wrap_text_to_width(display_text, 1.2, 2, max_width)
+					
+					# Center text vertically
+					line_height = 50
+					total_height = len(lines) * line_height
+					start_y = (height - total_height) // 2
+					
+					# Draw text lines
+					for i, line in enumerate(lines):
+						y = start_y + i * line_height
+						text_size = cv2.getTextSize(line, cv2.FONT_HERSHEY_SIMPLEX, 1.2, 2)[0]
+						x = (width - text_size[0]) // 2
+						
+						# Text background for readability
+						cv2.rectangle(frame, (x - 10, y - 35), (x + text_size[0] + 10, y + 10), (0, 0, 0), -1)
+						cv2.rectangle(frame, (x - 10, y - 35), (x + text_size[0] + 10, y + 10), (255, 255, 255), 2)
+						
+						# Draw text
+						cv2.putText(frame, line, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 2, cv2.LINE_AA)
+				
+				writer.write(frame)
+			
+			writer.release()
+			logger.info(f"Fast video generated in {duration} seconds: {output_path}")
+			return output_path
+			
+		except Exception as e:
+			logger.error(f"Fast video generation failed: {e}")
+			raise

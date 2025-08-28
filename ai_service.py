@@ -37,27 +37,47 @@ class AIService:
             logger.error(f"Failed to initialize Gemini model: {e}")
             raise
     
-    def generate_response(self, prompt: str, max_retries: int = 3) -> str:
+    def generate_response(self, prompt: str, max_retries: int = 2) -> str:
         """
-        Generate response from AI model with retry logic
+        Generate natural, conversational response from AI model
         
         Args:
             prompt: User input prompt
-            max_retries: Maximum number of retry attempts
+            max_retries: Maximum number of retry attempts (reduced for speed)
             
         Returns:
-            AI generated response
+            Natural AI response without structured formatting
         """
         for attempt in range(max_retries):
             try:
                 if not self.model:
                     raise ValueError("Model not initialized")
                 
-                response = self.model.generate_content(prompt)
+                # Create a natural conversation prompt
+                conversation_prompt = f"""
+You are a helpful AI assistant. Provide a natural, conversational response to the user's message.
+Keep your response friendly, informative, and easy to understand. Don't use any special formatting, 
+bullet points, or structured layouts unless specifically asked for.
+
+User message: {prompt}
+
+Please respond naturally:
+"""
+                
+                # Use faster generation settings for natural responses
+                response = self.model.generate_content(
+                    conversation_prompt,
+                    generation_config=genai.types.GenerationConfig(
+                        temperature=0.8,  # Slightly higher for more natural responses
+                        top_p=0.9,
+                        top_k=50,
+                        max_output_tokens=1024,  # Shorter for faster responses
+                    )
+                )
                 
                 if response and hasattr(response, 'text'):
                     logger.info(f"AI response generated successfully (attempt {attempt + 1})")
-                    return response.text
+                    return response.text.strip()
                 else:
                     raise ValueError("Empty or invalid response from model")
                     
@@ -68,9 +88,9 @@ class AIService:
                     logger.error(f"All {max_retries} attempts failed")
                     raise
                 
-                # Wait before retrying (exponential backoff)
+                # Very short wait time for instant retries
                 import time
-                time.sleep(2 ** attempt)
+                time.sleep(0.2 * (attempt + 1))  # Even faster retries
         
         raise Exception("Failed to generate response after all retry attempts")
     
@@ -211,28 +231,38 @@ Do NOT include code fences or markdown outside the specified format.
             focus_instruction = f"Break down {topic} into logical sections with detailed explanations and comprehensive examples."
         
         prompt = f"""
-You are a master educator creating a Google NotebookLM-style presentation for: "{topic}".
-Audience level: {level}. Target {num_slides} slides.
+You are an AI system that generates video slideshows with synced narration in Google NotebookLM style.
 
-CRITICAL STYLE RULES - NEVER VIOLATE:
+## 🎯 TASK
+Create a professional VIDEO presentation for: "{topic}"
+Audience Level: {level}
+Target Slides: {num_slides}
+Video Duration: ~{num_slides * 8} seconds (8 seconds per slide)
+
+## 📋 CRITICAL STYLE RULES - NEVER VIOLATE
 - NEVER use question marks (?) anywhere in any content
 - NEVER start sentences with "What", "How", "Why", "When", "Where", "Which"
 - Write ONLY clear, declarative statements
-- Use simple, direct language
+- Use simple, direct language appropriate for {level} level
 - Focus on understanding, not memorization
 - Make each slide build on the previous one
 - Avoid jargon and complex terminology
 - Write like explaining to a friend
+- Ensure NO overlapping text on slides
+- Use proper spacing and clean formatting
 
-NOTEBOOKLM-STYLE PRESENTATION REQUIREMENTS:
-- Create clean, minimal, focused slides
+## 🎨 VIDEO-OPTIMIZED REQUIREMENTS
+- Create clean, minimal, focused slides optimized for video viewing
 - Each slide should have clear subtopics and detailed content
 - Include proper introduction, main content sections, and conclusion
-- Use professional presentation formatting
-- Focus on one main concept per slide
+- Use professional presentation formatting suitable for video
+- Focus on one main concept per slide (8 seconds of content)
 - Use concrete examples and real-world applications
+- Ensure slides are visually balanced and non-cluttered for video display
+- Design for smooth transitions between slides
+- Optimize text size and spacing for video viewing
 
-CONTENT REQUIREMENTS:
+## 📊 CONTENT REQUIREMENTS
 - {focus_instruction}
 - Start with a clear title slide and agenda
 - Break down the topic into logical subtopics
@@ -241,40 +271,68 @@ CONTENT REQUIREMENTS:
 - Use professional language and clear structure
 - End with a comprehensive summary and key takeaways
 
+## 🎭 VIDEO SUBTOPIC TYPES
+Use these different subtopic types to create engaging, non-repetitive video content:
+
+- definition: Clear definitions and explanations (clean minimal, concept fade-in, 8 seconds)
+- comparison: Compare and contrast different concepts (side-by-side comparison, alternating reveals, 8 seconds)
+- process: Step-by-step processes and workflows (timeline style, sequential reveals, 8 seconds)
+- advantages_disadvantages: Pros and cons analysis (two-column grid, pros/cons reveal, 8 seconds)
+- case_study: Real-world examples and applications (storyboard style, narrative flow, 8 seconds)
+- timeline: Historical development and evolution (horizontal timeline, chronological reveal, 8 seconds)
+- classification: Categorization and classification systems (hierarchical tree, category reveals, 8 seconds)
+- principles: Core principles and fundamental concepts (card-based grid, principle highlights, 8 seconds)
+
+## 📝 SLIDE STRUCTURE REQUIREMENTS
+
 Each slide must include:
 - title: clean, focused slide title (max 6 words, no questions)
 - subtopics: 2-3 main subtopics for this slide (max 5 words each)
-- bullets: 3-4 detailed bullet points explaining the subtopics (max 7 words each)
-- narration: 60-100 words of flowing explanation that teaches the concept clearly
+- bullets: 3-6 concise bullet points (only keywords or short phrases, max 7 words each)
+- narration: 80-120 words of flowing explanation that teaches the concept clearly (timed for ~8 seconds)
 - examples: 1-2 concrete examples that illustrate the concepts clearly
 - visual_prompts: 1-2 prompts describing clean, minimal visuals for this slide
+- layout: suggested animation style based on subtopic type
+- subtopic_type: one of the 8 types listed above
+- timing: 8 seconds per slide for smooth video flow
 
-SLIDE TYPES TO INCLUDE:
-1. Title Slide: Topic, clean introduction
-2. Overview: What will be covered
-3. Introduction: What the topic is and why it matters
-4. Main Content Slides: Detailed explanations with subtopics
-5. Examples/Applications: Real-world usage
-6. Summary: Key takeaways and next steps
+## 🎬 VIDEO SLIDE TYPES TO INCLUDE
+1. Title Slide: Topic introduction with clean, minimal design (8 seconds)
+2. Overview: What will be covered (agenda-style, 8 seconds)
+3. Introduction: What the topic is and why it matters (8 seconds)
+4. Main Content Slides: Detailed explanations with varied subtopic types (8 seconds each)
+5. Examples/Applications: Real-world usage and case studies (8 seconds)
+6. Summary: Key takeaways and next steps (8 seconds)
 
 {constraints}
 
-Return ONLY valid JSON with this exact shape:
+## 📋 OUTPUT FORMAT
+Return ONLY valid JSON with this exact structure:
 {{
-  "topic": "...",
-  "level": "...",
+  "topic": "{topic}",
+  "level": "{level}",
   "slides": [
     {{
-      "title": "...",
-      "subtopics": ["..."],
-      "bullets": ["..."],
-      "narration": "...",
-      "examples": ["..."],
-      "visual_prompts": ["..."]
+      "title": "clean slide title",
+      "subtopics": ["subtopic1", "subtopic2"],
+      "bullets": ["bullet1", "bullet2", "bullet3"],
+      "narration": "detailed explanation that expands on bullets with context and examples",
+      "examples": ["example1", "example2"],
+      "visual_prompts": ["visual description 1", "visual description 2"],
+      "layout": "suggested animation style",
+      "subtopic_type": "definition|comparison|process|advantages_disadvantages|case_study|timeline|classification|principles"
     }}
   ]
 }}
-Do not include markdown fences or any text outside JSON.
+
+IMPORTANT: 
+- Do not include markdown fences or any text outside JSON
+- Ensure all text is clean, professional, and free of question marks
+- Make narration significantly more detailed than bullet points
+- Vary subtopic types to avoid repetition
+- Keep slides visually clean and non-overlapping
+- Optimize content for video viewing and narration timing
+- Ensure smooth flow between slides for video presentation
         """
 
         for attempt in range(max_retries):
@@ -464,34 +522,105 @@ Do not include markdown fences or any text outside JSON.
             openai.api_key = api_key
             
             prompt = f"""
-Create a Google NotebookLM-style presentation for: "{topic}"
-Audience level: {level}. Target {num_slides} slides.
+You are an AI system that generates video slideshows with synced narration in Google NotebookLM style.
 
-CRITICAL: NEVER use question marks (?) anywhere. Write ONLY declarative statements.
+## 🎯 TASK
+Create a professional VIDEO presentation for: "{topic}"
+Audience Level: {level}
+Target Slides: {num_slides}
+Video Duration: ~{num_slides * 8} seconds (8 seconds per slide)
+
+## 📋 CRITICAL STYLE RULES - NEVER VIOLATE
+- NEVER use question marks (?) anywhere in any content
+- NEVER start sentences with "What", "How", "Why", "When", "Where", "Which"
+- Write ONLY clear, declarative statements
+- Use simple, direct language appropriate for {level} level
+- Focus on understanding, not memorization
+- Make each slide build on the previous one
+- Avoid jargon and complex terminology
+- Write like explaining to a friend
+- Ensure NO overlapping text on slides
+- Use proper spacing and clean formatting
+
+## 🎨 VIDEO-OPTIMIZED REQUIREMENTS
+- Create clean, minimal, focused slides optimized for video viewing
+- Each slide should have clear subtopics and detailed content
+- Include proper introduction, main content sections, and conclusion
+- Use professional presentation formatting suitable for video
+- Focus on one main concept per slide (8 seconds of content)
+- Use concrete examples and real-world applications
+- Ensure slides are visually balanced and non-cluttered for video display
+- Design for smooth transitions between slides
+- Optimize text size and spacing for video viewing
+
+## 📊 CONTENT REQUIREMENTS
+- Start with a clear title slide and agenda
+- Break down the topic into logical subtopics
+- Provide detailed explanations for each concept
+- Include multiple examples and real-world applications
+- Use professional language and clear structure
+- End with a comprehensive summary and key takeaways
+
+## 🎭 VIDEO SUBTOPIC TYPES
+Use these different subtopic types to create engaging, non-repetitive video content:
+
+- definition: Clear definitions and explanations (clean minimal, concept fade-in, 8 seconds)
+- comparison: Compare and contrast different concepts (side-by-side comparison, alternating reveals, 8 seconds)
+- process: Step-by-step processes and workflows (timeline style, sequential reveals, 8 seconds)
+- advantages_disadvantages: Pros and cons analysis (two-column grid, pros/cons reveal, 8 seconds)
+- case_study: Real-world examples and applications (storyboard style, narrative flow, 8 seconds)
+- timeline: Historical development and evolution (horizontal timeline, chronological reveal, 8 seconds)
+- classification: Categorization and classification systems (hierarchical tree, category reveals, 8 seconds)
+- principles: Core principles and fundamental concepts (card-based grid, principle highlights, 8 seconds)
+
+## 📝 SLIDE STRUCTURE REQUIREMENTS
 
 Each slide must include:
 - title: clean, focused slide title (max 6 words, no questions)
 - subtopics: 2-3 main subtopics for this slide (max 5 words each)
-- bullets: 3-4 detailed bullet points explaining the subtopics (max 7 words each)
-- narration: 60-100 words of flowing explanation that teaches the concept clearly
+- bullets: 3-6 concise bullet points (only keywords or short phrases, max 7 words each)
+- narration: 80-120 words of flowing explanation that teaches the concept clearly (timed for ~8 seconds)
 - examples: 1-2 concrete examples that illustrate the concepts clearly
 - visual_prompts: 1-2 prompts describing clean, minimal visuals for this slide
+- layout: suggested animation style based on subtopic type
+- subtopic_type: one of the 8 types listed above
+- timing: 8 seconds per slide for smooth video flow
 
-Return ONLY valid JSON with this exact shape:
+## 🎬 VIDEO SLIDE TYPES TO INCLUDE
+1. Title Slide: Topic introduction with clean, minimal design (8 seconds)
+2. Overview: What will be covered (agenda-style, 8 seconds)
+3. Introduction: What the topic is and why it matters (8 seconds)
+4. Main Content Slides: Detailed explanations with varied subtopic types (8 seconds each)
+5. Examples/Applications: Real-world usage and case studies (8 seconds)
+6. Summary: Key takeaways and next steps (8 seconds)
+
+## 📋 OUTPUT FORMAT
+Return ONLY valid JSON with this exact structure:
 {{
-  "topic": "...",
-  "level": "...",
+  "topic": "{topic}",
+  "level": "{level}",
   "slides": [
     {{
-      "title": "...",
-      "subtopics": ["..."],
-      "bullets": ["..."],
-      "narration": "...",
-      "examples": ["..."],
-      "visual_prompts": ["..."]
+      "title": "clean slide title",
+      "subtopics": ["subtopic1", "subtopic2"],
+      "bullets": ["bullet1", "bullet2", "bullet3"],
+      "narration": "detailed explanation that expands on bullets with context and examples",
+      "examples": ["example1", "example2"],
+      "visual_prompts": ["visual description 1", "visual description 2"],
+      "layout": "suggested animation style",
+      "subtopic_type": "definition|comparison|process|advantages_disadvantages|case_study|timeline|classification|principles"
     }}
   ]
 }}
+
+IMPORTANT: 
+- Do not include markdown fences or any text outside JSON
+- Ensure all text is clean, professional, and free of question marks
+- Make narration significantly more detailed than bullet points
+- Vary subtopic types to avoid repetition
+- Keep slides visually clean and non-overlapping
+- Optimize content for video viewing and narration timing
+- Ensure smooth flow between slides for video presentation
 """
             
             response = openai.ChatCompletion.create(

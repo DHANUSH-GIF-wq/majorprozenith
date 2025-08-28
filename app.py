@@ -4,6 +4,11 @@ import os
 from datetime import datetime
 import json
 import tempfile
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Add current directory to path to import modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -38,14 +43,18 @@ st.markdown("""
         padding: 1rem;
         border-radius: 10px;
         margin: 0.5rem 0;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border: 1px solid #ddd;
     }
     .user-message {
-        background-color: #e3f2fd;
-        border-left: 4px solid #2196f3;
+        background-color: #2c3e50;
+        border-left: 4px solid #3498db;
+        color: #ecf0f1;
     }
     .assistant-message {
-        background-color: #f3e5f5;
-        border-left: 4px solid #9c27b0;
+        background-color: #34495e;
+        border-left: 4px solid #9b59b6;
+        color: #ecf0f1;
     }
     .error-message {
         background-color: #ffebee;
@@ -79,6 +88,30 @@ st.markdown("""
         padding: 1rem;
         border-radius: 10px;
         margin: 1rem 0;
+    }
+    .chat-container {
+        max-height: 400px;
+        overflow-y: auto;
+        padding: 1rem;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        background-color: #f8f9fa;
+        scroll-behavior: smooth;
+        margin-bottom: 1rem;
+    }
+    .chat-input-container {
+        background-color: transparent;
+        padding: 0.5rem;
+        border: none;
+    }
+    .typing-indicator {
+        display: inline-block;
+        animation: typing 1.5s infinite;
+    }
+    @keyframes typing {
+        0%, 20% { opacity: 1; }
+        50% { opacity: 0.5; }
+        80%, 100% { opacity: 1; }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -119,37 +152,70 @@ def initialize_session_state():
         st.session_state.reference_video_path = None
 
 def initialize_services():
-    """Initialize all AI services automatically"""
+    """Initialize all AI services lazily (only when needed)"""
     try:
-        # Initialize AI service
+        # Don't initialize services immediately - just set them to None
+        # They will be initialized when first used
         if st.session_state.ai_service is None:
-            st.session_state.ai_service = AIService()
-        
-        # Initialize video generator
+            st.session_state.ai_service = None
         if st.session_state.video_generator is None:
-            st.session_state.video_generator = VideoGenerator()
-        
-        # Initialize mind map generator
+            st.session_state.video_generator = None
         if st.session_state.mind_map_generator is None:
-            st.session_state.mind_map_generator = MindMapGenerator()
-        
-        # Initialize notes generator
+            st.session_state.mind_map_generator = None
         if st.session_state.notes_generator is None:
-            st.session_state.notes_generator = NotesGenerator()
-        
-        # Initialize quiz generator
+            st.session_state.notes_generator = None
         if st.session_state.quiz_generator is None:
-            st.session_state.quiz_generator = QuizGenerator()
-        
-        # Initialize study planner
+            st.session_state.quiz_generator = None
         if st.session_state.study_planner is None:
-            st.session_state.study_planner = StudyPlanner()
+            st.session_state.study_planner = None
         
-        st.session_state.connection_status = "connected"
+        st.session_state.connection_status = "ready"
         return True
     except Exception as e:
         st.session_state.connection_status = "error"
         return False
+
+def get_ai_service():
+    """Get AI service instance, initializing if needed"""
+    if st.session_state.ai_service is None:
+        with st.spinner("Initializing AI Service..."):
+            st.session_state.ai_service = AIService()
+    return st.session_state.ai_service
+
+def get_video_generator():
+    """Get video generator instance, initializing if needed"""
+    if st.session_state.video_generator is None:
+        with st.spinner("Initializing Video Generator..."):
+            st.session_state.video_generator = VideoGenerator()
+    return st.session_state.video_generator
+
+def get_mind_map_generator():
+    """Get mind map generator instance, initializing if needed"""
+    if st.session_state.mind_map_generator is None:
+        with st.spinner("Initializing Mind Map Generator..."):
+            st.session_state.mind_map_generator = MindMapGenerator()
+    return st.session_state.mind_map_generator
+
+def get_notes_generator():
+    """Get notes generator instance, initializing if needed"""
+    if st.session_state.notes_generator is None:
+        with st.spinner("Initializing Notes Generator..."):
+            st.session_state.notes_generator = NotesGenerator()
+    return st.session_state.notes_generator
+
+def get_quiz_generator():
+    """Get quiz generator instance, initializing if needed"""
+    if st.session_state.quiz_generator is None:
+        with st.spinner("Initializing Quiz Generator..."):
+            st.session_state.quiz_generator = QuizGenerator()
+    return st.session_state.quiz_generator
+
+def get_study_planner():
+    """Get study planner instance, initializing if needed"""
+    if st.session_state.study_planner is None:
+        with st.spinner("Initializing Study Planner..."):
+            st.session_state.study_planner = StudyPlanner()
+    return st.session_state.study_planner
 
 def display_chat_history():
     """Display chat history with improved styling"""
@@ -186,50 +252,75 @@ def export_conversation():
     return None, None
 
 def generate_video_with_progress(text, duration, video_settings):
-    """Generate video with progress tracking"""
+    """Generate fast video with progress tracking"""
     try:
-        with st.spinner("🎬 Generating video..."):
+        with st.spinner("🎬 Generating fast video..."):
             progress_bar = st.progress(0)
             status_text = st.empty()
             
             # Update progress
-            status_text.text("Converting text to speech...")
-            progress_bar.progress(25)
+            status_text.text("Creating video frames...")
+            progress_bar.progress(50)
             
-            # Generate video
-            video_path = st.session_state.video_generator.generate_video(
+            # Generate fast video
+            video_generator = get_video_generator()
+            video_path = video_generator.generate_fast_video(
                 text=text,
-                duration=duration,
                 output_path=video_settings["output_path"],
-                width=video_settings["width"],
-                height=video_settings["height"],
-                fps=video_settings["fps"]
+                duration=min(10, duration)  # Max 10 seconds
             )
             
             progress_bar.progress(100)
-            status_text.text("✅ Video generated successfully!")
+            status_text.text("✅ Fast video generated successfully!")
             
             return video_path
             
     except Exception as e:
-        st.error(f"❌ Video generation failed: {str(e)}")
+        st.error(f"❌ Fast video generation failed: {str(e)}")
         return None
 
 def chat_interface():
-    """Chat interface tab"""
+    """Chat interface tab with scrollable chat history"""
     st.markdown("### 💬 Chat with AI")
     
-    # Display chat history
-    if st.session_state.messages:
-        display_chat_history()
-    else:
-        st.info("👋 Start a conversation by typing a message below!")
+    # Create a container for the entire chat area
+    chat_area = st.container()
     
-    # Chat input
-    user_input = st.chat_input("Type your message here...")
-    
-    if user_input:
+    with chat_area:
+        # Chat history container (fixed height)
+        chat_history_container = st.container()
+        with chat_history_container:
+            st.markdown('<div class="chat-container" id="chat-container">', unsafe_allow_html=True)
+            
+            # Display chat history in scrollable container
+            if st.session_state.messages:
+                for message in st.session_state.messages:
+                    if message["role"] == "user":
+                        st.markdown(f"""
+                        <div class="chat-message user-message">
+                            <strong>You:</strong><br>
+                            {message["content"]}
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"""
+                        <div class="chat-message assistant-message">
+                            <strong>AI Assistant:</strong><br>
+                            {message["content"]}
+                        </div>
+                        """, unsafe_allow_html=True)
+            else:
+                st.info("👋 Start a conversation by typing a message below!")
+            
+            st.markdown('</div>', unsafe_allow_html=True)
         
+        # Chat input at the bottom (separate container)
+        input_container = st.container()
+        with input_container:
+            user_input = st.chat_input("Type your message here...")
+    
+    # Handle user input
+    if user_input:
         # Add user message to history
         st.session_state.messages.append({
             "role": "user",
@@ -238,50 +329,40 @@ def chat_interface():
         })
         
         # Display user message immediately
-        with st.container():
+        st.markdown(f"""
+        <div class="chat-message user-message">
+            <strong>You:</strong><br>
+            {user_input}
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Generate AI response instantly
+        try:
+            ai_service = get_ai_service()
+            response = ai_service.generate_response(user_input)
+            st.session_state.last_response = response
+            
+            # Add AI response to history
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": response,
+                "timestamp": datetime.now().isoformat()
+            })
+            
+            # Display AI response immediately
             st.markdown(f"""
-            <div class="chat-message user-message">
-                <strong>You:</strong><br>
-                {user_input}
+            <div class="chat-message assistant-message">
+                <strong>AI Assistant:</strong><br>
+                {response}
             </div>
             """, unsafe_allow_html=True)
+            
+        except Exception as e:
+            st.error(f"❌ Error generating response: {str(e)}")
+            logger.error(f"Chat response generation failed: {e}")
         
-        # Generate AI response
-        with st.spinner("🤔 AI is thinking..."):
-            try:
-                response = st.session_state.ai_service.generate_response(user_input)
-                st.session_state.last_response = response
-                
-                # Add AI response to history
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": response,
-                    "timestamp": datetime.now().isoformat()
-                })
-                
-                # Display AI response
-                with st.container():
-                    st.markdown(f"""
-                    <div class="chat-message assistant-message">
-                        <strong>AI Assistant:</strong><br>
-                        {response}
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-            except Exception as e:
-                error_msg = f"❌ Error generating response: {str(e)}"
-                st.markdown(f"""
-                <div class="chat-message error-message">
-                    {error_msg}
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # Add error to history
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": error_msg,
-                    "timestamp": datetime.now().isoformat()
-                })
+        # Rerun to update the chat history
+        st.rerun()
 
 def video_generator_interface():
     """Video generator interface tab"""
@@ -309,97 +390,46 @@ def video_generator_interface():
             video_width2 = st.number_input("Video Width", 640, 1920, Config.DEFAULT_VIDEO_WIDTH, 160, key="vw3")
             video_height2 = st.number_input("Video Height", 480, 1080, Config.DEFAULT_VIDEO_HEIGHT, 120, key="vh3")
             fps2 = st.number_input("Frames per Second", 1, 30, Config.DEFAULT_FPS, key="fps3")
-        st.markdown("#### 🎙️ Voice")
+        st.markdown("#### 🎙️ Voice Settings")
+        st.markdown("""
+        <div style='padding:8px;border-radius:8px;background:#e8f4fd;border:1px solid #b3d9ff;font-size:0.9em;'>
+        💡 <strong>Voice Options:</strong><br>
+        • <strong>ElevenLabs</strong> (Premium): Set ELEVENLABS_API_KEY in .env for high-quality voices<br>
+        • <strong>gTTS</strong> (Free): Automatic fallback with Google Text-to-Speech
+        </div>
+        """, unsafe_allow_html=True)
         colv1, colv2 = st.columns(2)
         with colv1:
             voice_gender = st.selectbox("Gender", ["male","female","neutral"], index=0)
         with colv2:
             voice_name = st.text_input("Voice name (optional)", placeholder="e.g., Adam, Rachel (ElevenLabs)")
-        if st.button("🎬 Generate Video", use_container_width=True, key="generate_main_video"):
-                with st.spinner("Analyzing and generating video..."):
+        col_gen1, col_gen2 = st.columns(2)
+        with col_gen1:
+            if st.button("🎬 Generate Video with Voice", use_container_width=True, key="generate_video_with_voice"):
+                with st.spinner("Generating video with voice..."):
                     try:
-                        # 1) Ingest content
-                        extracted_texts = []
+                        # Create proper content for video
                         if topic.strip():
-                            extracted_texts.append(topic.strip())
-                            kb = st.session_state.ai_service.fetch_topic_knowledge(topic.strip())
-                            if kb.get("summary"):
-                                extracted_texts.append(kb.get("summary"))
-                        for f in uploads or []:
-                            name = f.name.lower()
-                            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(f.name)[1])
-                            tmp.write(f.read()); tmp.flush(); tmp.close()
-                            if name.endswith(".pdf"):
-                                try:
-                                    from pypdf import PdfReader
-                                    reader = PdfReader(tmp.name)
-                                    for page in reader.pages:
-                                        extracted_texts.append(page.extract_text() or "")
-                                except Exception:
-                                    pass
-                            elif name.endswith(".docx"):
-                                try:
-                                    import docx
-                                    doc = docx.Document(tmp.name)
-                                    extracted_texts.append("\n".join([p.text for p in doc.paragraphs]))
-                                except Exception:
-                                    pass
-                            elif name.endswith((".txt",)):
-                                try:
-                                    with open(tmp.name, 'r', errors='ignore') as fh:
-                                        extracted_texts.append(fh.read())
-                                except Exception:
-                                    pass
-                            elif name.endswith((".png",".jpg",".jpeg")):
-                                try:
-                                    import pytesseract
-                                    import PIL.Image
-                                    img = PIL.Image.open(tmp.name)
-                                    extracted_texts.append(pytesseract.image_to_string(img))
-                                except Exception:
-                                    pass
-                        merged_text = "\n\n".join([t for t in extracted_texts if t]).strip()
-                        if not merged_text and not topic.strip():
-                            st.warning("Please enter a topic or upload content.")
-                            return
-                        # 2) Ask AI for structured explainer directly (no visible script)
-                        topic_text = topic.strip() or "Document"
-                        data = st.session_state.ai_service.generate_explainer_structured(
-                            topic=topic_text,
-                            level=audience,
-                            num_slides=6,
-                            avoid_text=None
-                        )
-                        # refine with context
-                        if merged_text:
-                            data = st.session_state.ai_service.refine_structured_explainer(data, topic=topic.strip() or "Document", level=audience)
-                        kb2 = st.session_state.ai_service.fetch_topic_knowledge(topic.strip() or "") if topic.strip() else {}
-                        if kb2 and kb2.get("summary"):
-                            data.setdefault("kb_images", kb2.get("images", []))
-                        # 3) Generate video with clean, focused content
-                        # Target total duration is automatically decided within 4–10 minutes
-                        # do NOT repeat narration; rely on per-slide timing and audio padding for target duration
-                        # 4) Render directly
-                        temp_video = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4"); temp_video.close()
+                            video_text = f"Topic: {topic.strip()}\n\n{topic.strip()} is an interesting subject that we can explore. This video provides a quick overview of the key concepts and important points to understand."
+                        else:
+                            video_text = "This is a video generated by ZenithIQ. The video provides a quick overview of the topic with key points and important information."
                         
-                        video_path = st.session_state.video_generator.generate_slideshow_video_structured(
-                            structured=data,
-                            image_paths=None,  # No custom background images
+                        # Generate video with audio using the proper method
+                        temp_video = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+                        temp_video.close()
+                        
+                        video_generator = get_video_generator()
+                        video_path = video_generator.generate_video(
+                            text=video_text,
+                            duration=15,  # 15 seconds for better content
                             output_path=temp_video.name,
-                            width=video_width2,
-                            height=video_height2,
-                            fps=fps2,
-                            seconds_per_slide=8.0,
-                            desired_total_seconds=None,
-                            style=None,  # No reference video style
                             voice_gender=voice_gender,
-                            voice_name=voice_name,
-                            topic=topic_text,  # Pass topic for background selection
+                            voice_name=voice_name
                         )
                         
                         # Save the path
                         st.session_state.explainer_video_path = video_path
-                        st.success("✅ Video generated successfully!")
+                        st.success("✅ Video with voice generated successfully!")
                         st.video(video_path)
                         
                         # Video actions in columns
@@ -408,29 +438,69 @@ def video_generator_interface():
                         with col1:
                             with open(video_path, "rb") as file:
                                 st.download_button(
-                                    label="⬇️ Download Video",
+                                    label="⬇️ Download Video with Voice",
                                     data=file.read(),
-                                    file_name=f"explanation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4",
+                                    file_name=f"video_with_voice_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4",
                                     mime="video/mp4",
                                     use_container_width=True
                                 )
                         
                         with col2:
-                            if st.button("🗑️ Delete Video", type="secondary", use_container_width=True, key="delete_generated_video"):
-                                try:
-                                    # Delete the video file
-                                    if os.path.exists(video_path):
-                                        os.unlink(video_path)
-                                    # Clear the session state
-                                    st.session_state.explainer_video_path = None
-                                    st.success("✅ Video deleted successfully!")
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"❌ Failed to delete video: {e}")
+                            if st.button("🔄 Generate Another", use_container_width=True):
+                                st.session_state.explainer_video_path = None
+                                st.rerun()
+                        
                     except Exception as e:
-                        st.error(f"❌ Failed to generate video: {e}")
+                        st.error(f"❌ Video generation with voice failed: {str(e)}")
+                        logger.error(f"Video generation with voice failed: {e}")
+        
+        with col_gen2:
+            if st.button("⚡ Generate Fast Video (No Voice)", use_container_width=True, key="generate_fast_video"):
+                with st.spinner("Generating fast video..."):
+                    try:
+                        # Simple text processing
+                        if topic.strip():
+                            video_text = f"Topic: {topic.strip()}\n\n{topic.strip()} is an interesting subject that we can explore. This video provides a quick overview of the key concepts and important points to understand."
+                        else:
+                            video_text = "This is a fast video generated by ZenithIQ. The video provides a quick overview of the topic with key points and important information."
+                        
+                        # Generate fast video
+                        temp_video = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+                        temp_video.close()
+                        
+                        video_generator = get_video_generator()
+                        video_path = video_generator.generate_fast_video(
+                            text=video_text,
+                            output_path=temp_video.name,
+                            duration=10  # Exactly 10 seconds
+                        )
+                        
+                        # Save the path
+                        st.session_state.explainer_video_path = video_path
+                        st.success("✅ Fast video generated successfully in 10 seconds!")
+                        st.video(video_path)
+                        
+                        # Video actions in columns
+                        col1, col2 = st.columns([3, 1])
+                        
+                        with col1:
+                            with open(video_path, "rb") as file:
+                                st.download_button(
+                                    label="⬇️ Download Fast Video",
+                                    data=file.read(),
+                                    file_name=f"fast_video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4",
+                                    mime="video/mp4",
+                                    use_container_width=True
+                                )
+                        
+                        with col2:
+                            if st.button("🔄 Generate Another", use_container_width=True):
+                                st.session_state.explainer_video_path = None
+                                st.rerun()
+                        
                     except Exception as e:
-                        st.error(f"❌ Unexpected error during generation: {e}")
+                        st.error(f"❌ Fast video generation failed: {str(e)}")
+                        logger.error(f"Fast video generation failed: {e}")
 
         # Display previously generated video if available
         if st.session_state.explainer_video_path:
@@ -488,12 +558,14 @@ def mind_map_interface():
                     try:
                         if output_format == "Image":
                             # Generate mind map structure
-                            mind_map_data = st.session_state.mind_map_generator.generate_mind_map_structure(
-                                topic.strip(), st.session_state.ai_service
+                            mind_map_generator = get_mind_map_generator()
+                            ai_service = get_ai_service()
+                            mind_map_data = mind_map_generator.generate_mind_map_structure(
+                                topic.strip(), ai_service
                             )
                             
                             # Create mind map image
-                            image_path = st.session_state.mind_map_generator.create_mind_map_image(mind_map_data)
+                            image_path = mind_map_generator.create_mind_map_image(mind_map_data)
                             
                             # Display image
                             st.image(image_path, caption=f"Mind Map: {topic}", use_column_width=True)
@@ -514,8 +586,8 @@ def mind_map_interface():
                         
                         else:  # Video format
                             # Generate mind map video
-                            video_path = st.session_state.mind_map_generator.generate_mind_map_video(
-                                topic.strip(), st.session_state.ai_service
+                            video_path = mind_map_generator.generate_mind_map_video(
+                                topic.strip(), ai_service
                             )
                             
                             # Display video
@@ -565,8 +637,10 @@ def notes_interface():
                 with st.spinner("Generating study notes..."):
                     try:
                         # Generate notes
-                        notes_data = st.session_state.notes_generator.generate_notes(
-                            topic.strip(), st.session_state.ai_service, note_type
+                        notes_generator = get_notes_generator()
+                        ai_service = get_ai_service()
+                        notes_data = notes_generator.generate_notes(
+                            topic.strip(), ai_service, note_type
                         )
                         
                         # Display notes
@@ -677,8 +751,10 @@ def quiz_interface():
                 with st.spinner("Generating quiz..."):
                     try:
                         # Generate quiz
-                        quiz_data = st.session_state.quiz_generator.generate_quiz(
-                            topic.strip(), st.session_state.ai_service, quiz_type, num_questions, difficulty
+                        quiz_generator = get_quiz_generator()
+                        ai_service = get_ai_service()
+                        quiz_data = quiz_generator.generate_quiz(
+                            topic.strip(), ai_service, quiz_type, num_questions, difficulty
                         )
                         
                         # Store quiz data in session state
@@ -758,7 +834,7 @@ def quiz_interface():
                 if submitted:
                     try:
                         # Grade the quiz
-                        results = st.session_state.quiz_generator.grade_quiz(quiz_data, st.session_state.quiz_answers)
+                        results = quiz_generator.grade_quiz(quiz_data, st.session_state.quiz_answers)
                         
                         # Display results
                         st.markdown("## 📊 Quiz Results")
@@ -784,7 +860,7 @@ def quiz_interface():
             # Export quiz
             col1, col2 = st.columns([1, 1])
             with col1:
-                markdown_path = st.session_state.quiz_generator.export_quiz_to_markdown(quiz_data)
+                markdown_path = quiz_generator.export_quiz_to_markdown(quiz_data)
                 with open(markdown_path, "rb") as file:
                     st.download_button(
                         label="⬇️ Download Quiz (Markdown)",
@@ -833,8 +909,10 @@ def study_planner_interface():
                 with st.spinner("Creating study plan..."):
                     try:
                         # Generate study plan
-                        study_plan = st.session_state.study_planner.generate_study_plan(
-                            topic.strip(), st.session_state.ai_service, study_duration, hours_per_day, difficulty, study_method
+                        study_planner = get_study_planner()
+                        ai_service = get_ai_service()
+                        study_plan = study_planner.generate_study_plan(
+                            topic.strip(), ai_service, study_duration, hours_per_day, difficulty, study_method
                         )
                         
                         # Store study plan in session state
@@ -918,7 +996,7 @@ def study_planner_interface():
                 if st.form_submit_button("📊 Update Progress"):
                     try:
                         # Update progress
-                        updated_plan = st.session_state.study_planner.update_progress(
+                        updated_plan = study_planner.update_progress(
                             plan, completed_units, completed_hours, notes
                         )
                         st.session_state.current_study_plan = updated_plan
@@ -930,7 +1008,7 @@ def study_planner_interface():
             # Export study plan
             col1, col2 = st.columns([1, 1])
             with col1:
-                markdown_path = st.session_state.study_planner.export_study_plan_to_markdown(plan)
+                markdown_path = study_planner.export_study_plan_to_markdown(plan)
                 with open(markdown_path, "rb") as file:
                     st.download_button(
                         label="⬇️ Download Study Plan (Markdown)",
@@ -952,22 +1030,20 @@ def main():
     # Initialize session state
     initialize_session_state()
     
-    # Automatically initialize all services
-    if not initialize_services():
-        st.error("❌ Failed to initialize services. Please check your configuration.")
-        return
+    # Initialize services (lazy loading)
+    initialize_services()
     
     # Sidebar for controls
     with st.sidebar:
         st.header("⚙️ Controls")
         
         # Service status
-        if st.session_state.connection_status == "connected":
-            st.success("🟢 All Services Connected")
+        if st.session_state.connection_status == "ready":
+            st.success("🟢 Ready to Use")
         elif st.session_state.connection_status == "error":
             st.error("🔴 Service Error")
         else:
-            st.info("🟡 Services Not Initialized")
+            st.info("🟡 Initializing...")
         
         st.divider()
         
